@@ -16,7 +16,7 @@
 -- along with this program; if not, write to the Free Software
 -- Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
--- [11-APR-22] Working on A3041 IST. Introduce constants that calculate correct 
+-- [11-APR-22] Working on P3041. Introduce constants that calculate correct 
 -- vector sizes in the processor so as to adapt automatically to new program 
 -- and cpu memory sizes. Improve implementation of stack overflow flag, which 
 -- now remains asserted until RESET.
@@ -309,7 +309,7 @@ begin
 		-- Bit-Wise Logical AND of X and Y
 		when alu_cmd_and =>
 			result := to_integer(unsigned(
-					std_logic_vector(to_unsigned(alu_in_X,8))
+					std_logic_vector(to_unsigned(alu_in_x,8))
 					and std_logic_vector(to_unsigned(alu_in_y,8)) ));
 					
 		 -- Rotate Left of X	
@@ -357,9 +357,13 @@ begin
 			result_vec(7) := '0';		
 			result_vec(8) := X_vec(0);		
 			result := to_integer(unsigned(result_vec));
-			
+		
+		-- An others clause identical to another instruction.
 		when others =>
-			result := to_integer(unsigned(X_vec));	
+			result_vec(6 downto 0) := X_vec(7 downto 1);
+			result_vec(7) := '0';		
+			result_vec(8) := X_vec(0);		
+			result := to_integer(unsigned(result_vec));
 			
 		end case;
 		
@@ -966,6 +970,7 @@ begin
 					end if;
 					next_state := read_opcode;
 					
+				-- An others clause identical to one of the other opcodes.
 				when others => 
 					next_state := read_opcode;
 					next_pa := std_logic_vector(unsigned(prog_addr)+1);
@@ -1032,10 +1037,12 @@ begin
 					next_pa := (others => '0');
 					next_pa(7 downto 0) := cpu_data_in;
 					next_state := read_second_byte;	
-					
+				
+				-- An others clause identical to one of the above clauses.
 				when others => 
-					next_state := read_opcode;
-					next_pa := std_logic_vector(unsigned(prog_addr)+1);
+					next_pa := (others => '0');
+					next_pa(7 downto 0) := cpu_data_in;
+					next_state := read_second_byte;	
 	
 				end case;
 	
@@ -1071,13 +1078,14 @@ begin
 					else 
 						next_flag_I := false;
 						next_state := read_opcode;
-					end if;				-- The others clause that stabilizes the code.
-
+					end if;
+		
+				-- An others clause identical to one of the above.
 				when others => 
-					next_state := read_opcode;
-					next_pa := std_logic_vector(unsigned(prog_addr)+1);
-	
-				end case;
+					next_pa(pa_top downto 8) := cpu_data_in(pa_top-8 downto 0);
+					next_pa(7 downto 0) := prog_addr(7 downto 0);	
+
+			end case;
 			
 			-- Write the second byte of data. We have no "write first byte" state because
 			-- we write the first byte immediately upon decoding the instruction. We never
@@ -1125,9 +1133,10 @@ begin
 					end if;
 					next_state := read_opcode;
 				
+				-- An others clause identical to one of the above.
 				when others => 
+					next_pa := prog_addr;
 					next_state := read_opcode;
-					next_pa := std_logic_vector(unsigned(prog_addr)+1);
 										
 				end case;
 				
@@ -1251,11 +1260,11 @@ begin
 				alu_in_y <= reg_B;
 				alu_ctrl <= alu_cmd_xor;
 			
-			-- Shift and Rotate Operations on A. We specify reg_B for alu_in_Y
+			-- Shift and Rotate Operations on A. We specify reg_B for alu_in_y
 			-- because it reduces our logic footprint.
 			when rl_A | rlc_A | rr_A | rrc_A | sla_A | sra_A | srl_A =>
-				alu_in_X <= reg_A;
-				alu_in_Y <= reg_B;
+				alu_in_x <= reg_A;
+				alu_in_y <= reg_B;
 				alu_cin <= flag_C;
 				case opcode_now is 
 					when rl_A  => alu_ctrl <= alu_cmd_rl;
@@ -1265,12 +1274,12 @@ begin
 					when sla_A => alu_ctrl <= alu_cmd_sla;
 					when sra_A => alu_ctrl <= alu_cmd_sra;
 					when srl_A => alu_ctrl <= alu_cmd_srl;	
-					when others => alu_ctrl <= alu_cmd_nop;
+					when others => alu_ctrl <= alu_cmd_srl;
 				end case;
 				
 			when others =>
 				alu_in_x <= reg_A;
-				alu_in_Y <= reg_B;
+				alu_in_y <= reg_B;
 				alu_ctrl <= alu_cmd_nop;
 				
 			end case;
@@ -1294,27 +1303,27 @@ begin
 					alu_ctrl <= alu_cmd_sub;
 				end if;		
 				
-			-- Logical operations on A and a constant. We specify reg_B for alu_in_Y
+			-- Logical operations on A and a constant. We specify reg_B for alu_in_y
 			-- because it reduces our logic footprint.
 			when and_A_n =>
 				alu_in_x <= reg_A;
-				alu_in_Y <= reg_B;
+				alu_in_y <= reg_B;
 				alu_in_y <= to_integer(unsigned(prog_data));
 				alu_ctrl <= alu_cmd_and;
 			when or_A_n =>
 				alu_in_x <= reg_A;
-				alu_in_Y <= reg_B;
+				alu_in_y <= reg_B;
 				alu_in_y <= to_integer(unsigned(prog_data));
 				alu_ctrl <= alu_cmd_or;
 			when xor_A_n =>
 				alu_in_x <= reg_A;
-				alu_in_Y <= reg_B;
+				alu_in_y <= reg_B;
 				alu_in_y <= to_integer(unsigned(prog_data));
 				alu_ctrl <= alu_cmd_xor;
 			
 			when others =>
 				alu_in_x <= reg_A;
-				alu_in_Y <= reg_B;
+				alu_in_y <= reg_B;
 				alu_ctrl <= alu_cmd_nop;
 			
 			end case;
