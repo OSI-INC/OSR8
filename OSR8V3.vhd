@@ -16,15 +16,21 @@
 -- along with this program; if not, write to the Free Software
 -- Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
--- Version 3: Developed for the A3041 Implantable Stimulator-Transponder
+-- [11-APR-22] Working on A3041 IST. Introduce constants that calculate correct 
+-- vector sizes in the processor so as to adapt automatically to new program 
+-- and cpu memory sizes. Improve implementation of stack overflow flag, which 
+-- now remains asserted until RESET.
 
--- [11-APR-22] Introduce constants that calculate correct vector sizes in
--- the processor so as to adapt automatically to new program and cpu memory
--- sizes. Improve implementation of stack overflow signal, which now remains
--- asserted until RESET.
+-- [18-JUN-22] Remove stack overflow flag. Stack pointer always resets to
+-- zero, so CPU must have RAM at address zero to use as initial stack during
+-- initialization. The initial stack will allow the CPU program to load the
+-- stack pointer with a new value.
 
 -- [06-DEC-24] Searching for boot bug, eliminate prog_addr in code, use
--- prog_addr.
+-- prog_addr everywhere.
+
+-- [13-DEC-24] Add others clauses to all cases in the hope that this will 
+-- stabilized the compile process.
 
 library ieee;  
 use ieee.std_logic_1164.all;
@@ -226,6 +232,7 @@ architecture behavior of OSR8_CPU is
 	constant alu_cmd_srl  : integer := 11; -- Shift Right Logical of X
 	constant alu_cmd_inc  : integer := 12; -- Incrment X
 	constant alu_cmd_dec  : integer := 13; -- Decrement X
+	constant alu_cmd_nop  : integer := 15; -- Direct X to A
 
 -- The Accumulator, or Register A, in which we get the result of eight-bit
 -- arithmetic operations, logical operations, and shifts and rotations. 
@@ -350,6 +357,9 @@ begin
 			result_vec(7) := '0';		
 			result_vec(8) := X_vec(0);		
 			result := to_integer(unsigned(result_vec));
+			
+		when others =>
+			result := to_integer(unsigned(X_vec));	
 			
 		end case;
 		
@@ -803,6 +813,7 @@ begin
 				when others => 
 					next_state := read_first_operand;
 					next_pa := std_logic_vector(unsigned(prog_addr)+1);
+					
 				end case;
 						
 			-- Instructions have either one or two operands, which will be provided HI-byte
@@ -955,6 +966,10 @@ begin
 					end if;
 					next_state := read_opcode;
 					
+				when others => 
+					next_state := read_opcode;
+					next_pa := std_logic_vector(unsigned(prog_addr)+1);
+	
 				end case;
 				
 			-- Read the first byte of data from the data bus. This could be a user memory access
@@ -1017,6 +1032,11 @@ begin
 					next_pa := (others => '0');
 					next_pa(7 downto 0) := cpu_data_in;
 					next_state := read_second_byte;	
+					
+				when others => 
+					next_state := read_opcode;
+					next_pa := std_logic_vector(unsigned(prog_addr)+1);
+	
 				end case;
 	
 			-- Read the second byte of data. We never increment the program counter from
@@ -1051,7 +1071,12 @@ begin
 					else 
 						next_flag_I := false;
 						next_state := read_opcode;
-					end if;
+					end if;				-- The others clause that stabilizes the code.
+
+				when others => 
+					next_state := read_opcode;
+					next_pa := std_logic_vector(unsigned(prog_addr)+1);
+	
 				end case;
 			
 			-- Write the second byte of data. We have no "write first byte" state because
@@ -1099,7 +1124,11 @@ begin
 							std_logic_vector(to_unsigned((interrupt_pc rem 256),8));
 					end if;
 					next_state := read_opcode;
-									
+				
+				when others => 
+					next_state := read_opcode;
+					next_pa := std_logic_vector(unsigned(prog_addr)+1);
+										
 				end case;
 				
 			-- The increment-program-counter state increments the program counter and moves
@@ -1235,8 +1264,14 @@ begin
 					when rrc_A => alu_ctrl <= alu_cmd_rrc;
 					when sla_A => alu_ctrl <= alu_cmd_sla;
 					when sra_A => alu_ctrl <= alu_cmd_sra;
-					when srl_A => alu_ctrl <= alu_cmd_srl;				
+					when srl_A => alu_ctrl <= alu_cmd_srl;	
+					when others => alu_ctrl <= alu_cmd_nop;
 				end case;
+				
+			when others =>
+				alu_in_x <= reg_A;
+				alu_in_Y <= reg_B;
+				alu_ctrl <= alu_cmd_nop;
 				
 			end case;
 		-- If we are not in the read_opcode state, we have a variable "opcode" that holds
@@ -1277,6 +1312,11 @@ begin
 				alu_in_y <= to_integer(unsigned(prog_data));
 				alu_ctrl <= alu_cmd_xor;
 			
+			when others =>
+				alu_in_x <= reg_A;
+				alu_in_Y <= reg_B;
+				alu_ctrl <= alu_cmd_nop;
+			
 			end case;
 		end if;
 		
@@ -1290,6 +1330,7 @@ begin
 			when read_second_byte => SIG(2 downto 0) <= "101";
 			when write_second_byte => SIG(2 downto 0) <= "110";
 			when incr_pc => SIG(2 downto 0) <= "111";
+			when others => SIG(2 downto 0) <= "000";
 		end case;
 	end process;
 end behavior;
