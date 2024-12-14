@@ -1,6 +1,6 @@
 -- Open-Source Reconfigurable Eight-Bit (OSR8) Central Processing Unit (CPU)
 --
--- Copyright (C) 2020-2022 Kevan Hashemi, Open Source Instruments Inc.
+-- Copyright (C) 2020-2024 Kevan Hashemi, Open Source Instruments Inc.
 --
 -- This program is free software; you can redistribute it and/orpr
 -- modify it under the terms of the GNU General Public License
@@ -30,7 +30,8 @@
 -- prog_addr everywhere.
 
 -- [13-DEC-24] Add others clauses to all cases in the hope that this will 
--- stabilized the compile process.
+-- stabilized the compile process. Each others clause is a repeat of some
+-- or all of a previous clause.
 
 library ieee;  
 use ieee.std_logic_1164.all;
@@ -75,7 +76,7 @@ entity OSR8_CPU is
 		interrupt_pc : integer := 3	);
 	port (
 		prog_data : in std_logic_vector(7 downto 0); -- Program Data
-		prog_addr : out std_logic_vector(prog_addr_len-1 downto 0); -- Program Address
+		prog_addr : inout std_logic_vector(prog_addr_len-1 downto 0); -- Program Address
 		cpu_data_out : out std_logic_vector(7 downto 0); -- Outgoing CPU Data Bus
 		cpu_data_in : in std_logic_vector(7 downto 0); -- Incoming CPU Data Bus
 		cpu_addr : out std_logic_vector(cpu_addr_len-1 downto 0); -- Outgoing CPU Address Bus
@@ -84,7 +85,8 @@ entity OSR8_CPU is
 		IRQ : in boolean; -- Interrupt Request
 		SIG : out std_logic_vector(2 downto 0); -- Signals for Debugging
 		RESET : in std_logic; -- Hard Reset
-		CK : in std_logic); -- The clock, duty cycle 50%.
+		CK : in std_logic -- The clock, duty cycle 50%.
+	); 
 
 -- Program location constants in bytes.
 	constant pa_top : integer := prog_addr_len-1;
@@ -431,13 +433,7 @@ begin
 		-- Otherwise we repond to the rising edge of CK.
 		elsif rising_edge(CK) then
 		
-			-- Define default next values. We end up stating explicitly what
-			-- the next state and next program counter will be. We find that 
-			-- adding or removing a single, redundant, logic expression can 
-			-- change the code size by up to 30 LUTs. We suspect a bug somewhere
-			-- in our code that makes our logic definition ambiguous, so we
-			-- specify the program counter and next state as often as we can
-			-- in order to suppress any possible ambiguity.
+			-- Define default next values.
 			next_state := read_opcode;
 			next_pa := std_logic_vector(unsigned(prog_addr)+1);
 			next_A := reg_A;
@@ -947,7 +943,6 @@ begin
 				-- value. Clock Cycles = 3.
 				when jp_nn | jp_z_nn | jp_nz_nn | jp_nc_nn 
 						| jp_c_nn | jp_np_nn | jp_p_nn =>
-					jump := false;
 					case opcode is 		
 					when jp_nn => jump := true;
 					when jp_z_nn => jump := flag_Z;
@@ -956,6 +951,7 @@ begin
 					when jp_c_nn => jump := flag_C;
 					when jp_np_nn => jump := flag_S;
 					when jp_p_nn => jump := not flag_S;
+					when others => jump := false;
 					end case;
 					-- If we are supposed to jump, do so by setting the program counter to
 					-- the specified absolute value. The first operand is the HI byte, the
@@ -1009,6 +1005,7 @@ begin
 							next_flag_C := (cpu_data_in(2) = '1');		
 							next_flag_S := (cpu_data_in(1) = '1');
 							next_flag_Z := (cpu_data_in(0) = '1');
+						when others => next_A := to_integer(unsigned(cpu_data_in));
 					end case;
 					next_pa := prog_addr;
 					next_state := read_opcode;
@@ -1023,6 +1020,7 @@ begin
 					case opcode is
 						when pop_IX => next_IX(7 downto 0) := cpu_data_in(7 downto 0);
 						when pop_IY => next_IY(7 downto 0) := cpu_data_in(7 downto 0);
+						when others => next_IX(7 downto 0) := cpu_data_in(7 downto 0);
 					end case;
 					next_pa := prog_addr;
 					next_state := read_second_byte;	
@@ -1106,6 +1104,7 @@ begin
 					case opcode is
 						when push_IX => cpu_data_out(7 downto 0) <= reg_IX(7 downto 0);
 						when push_IY => cpu_data_out(7 downto 0) <= reg_IY(7 downto 0);
+						when others => cpu_data_out(7 downto 0) <= reg_IX(7 downto 0);
 					end case;
 					next_pa := prog_addr;
 					next_state := read_opcode;
