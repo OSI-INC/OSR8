@@ -16,7 +16,8 @@ OSR8V3 and OSR8V4.
 - OSR8V3: Introduced in 2022, stable and in continuous use through 2025. No known
 bugs. Generic constants for address lengths allow deployment in a wide range
 of sizes. The 4-KByte program memory, 2-KByte user memory version takes up
-800 LUTs in a MachXO2.
+800 LUTs in a MachXO2. While this version is running active code, an average of 
+150 gates transition on every clock edge.
 
 - OSR8V4: Started in 2026, planning addition of an interrupt execution flag
 to support automatic clock boost during interrupt service routines. No known 
