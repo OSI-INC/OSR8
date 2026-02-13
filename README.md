@@ -19,6 +19,8 @@ of sizes. The 4-KByte program memory, 2-KByte user memory version takes up
 800 LUTs in a MachXO2. While this version is running active code, an average of 
 150 gates transition on every clock edge.
 
-- OSR8V4: Started in 2026, planning addition of an interrupt execution flag
-to support automatic clock boost during interrupt service routines. No known 
-bugs. Still backward-compatible with OSR8V3, but may not remain so.
+- OSR8V4: Started in 2026. Renamed prog_addr as prog_cntr in the port map, after
+removing prog_addr from the OSR8 body. This change requires accommodation in
+the main program, so the OSR8V4 is not backward-compatible with OSR8V3. We are
+planning addition of an interrupt execution flag to support automatic clock boost 
+during interrupt service routines. No known bugs.
