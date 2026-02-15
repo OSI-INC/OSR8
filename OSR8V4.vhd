@@ -28,10 +28,10 @@
 -- initialization. The initial stack will allow the CPU program to load the
 -- stack pointer with a new value.
 
--- Version 4: Efforts to Simplify and Compress the CPU.
+-- Version 4: Plan to support faster boost and more efficient un-boost.
 
 -- [10-FEB-26] Eliminate the intermediate variable prog_cntr, change all
--- occurances of prog_addr to prog_cntr. Resulst in no change in the logic
+-- occurances of prog_addr to prog_cntr. Results in no change in the logic
 -- resource allocation.
 
 library ieee;  
@@ -979,7 +979,7 @@ begin
 					next_state := read_opcode;
 					
 				-- We have selected a byte in the stack with the stack pointer, and half-way
-				-- through thic cycle it will appear on the data bus. We store it in the
+				-- through this cycle it will appear on the data bus. We store it in the
 				-- destination register on the next rising edge of the clock. 
 				when pop_A | pop_B | pop_C | pop_D | pop_E | pop_H | pop_L | pop_F =>
 					case opcode is
