@@ -224,7 +224,7 @@ architecture behavior of OSR8_CPU is
 	attribute syn_keep of alu_out : signal is true;
 	attribute nomerge of alu_out : signal is "";
 	signal alu_in_x, alu_in_y : integer range 0 to 255;
-	signal alu_cin, alu_cout, alu_z, alu_v : boolean;
+	signal alu_cin, alu_cout : boolean;
 	signal alu_ctrl : integer range 0 to 15;
 	constant alu_cmd_add  : integer := 0; -- Add X and Y
 	constant alu_cmd_sub  : integer := 1; -- Subtract Y from X
@@ -238,8 +238,6 @@ architecture behavior of OSR8_CPU is
 	constant alu_cmd_sla  : integer := 9; -- Shift Left Arithmetic of X
 	constant alu_cmd_sra  : integer := 10; -- Shift Right Arithmetic of X
 	constant alu_cmd_srl  : integer := 11; -- Shift Right Logical of X
-	constant alu_cmd_inc  : integer := 12; -- Incrment X
-	constant alu_cmd_dec  : integer := 13; -- Decrement X
 		
 -- CPU Registers
 
@@ -286,10 +284,12 @@ begin
 	CPU_ALU : process (alu_ctrl,alu_cin,alu_in_x,alu_in_y) is
 	variable result : integer range 0 to 511;
 	variable result_vec : std_logic_vector(8 downto 0);
-	variable X_vec : std_logic_vector(8 downto 0);
+	variable x_vec : std_logic_vector(8 downto 0);
 	begin 
-		X_vec(7 downto 0) := std_logic_vector(to_unsigned(alu_in_x,8));
-		X_vec(8) := to_std_logic(alu_cin);
+		x_vec(7 downto 0) := std_logic_vector(to_unsigned(alu_in_x,8));
+		x_vec(8) := to_std_logic(alu_cin);
+		
+		result := alu_in_x + alu_in_y;
 		
 		case alu_ctrl is
 		
@@ -318,54 +318,58 @@ begin
 		-- Bit-Wise Logical AND of X and Y
 		when alu_cmd_and =>
 			result := to_integer(unsigned(
-					std_logic_vector(to_unsigned(alu_in_X,8))
+					std_logic_vector(to_unsigned(alu_in_x,8))
 					and std_logic_vector(to_unsigned(alu_in_y,8)) ));
 					
 		 -- Rotate Left of X	
 		when alu_cmd_rl  => 
-			result_vec(8 downto 1) := X_vec(7 downto 0);
-			result_vec(0) := X_vec(8);	
+			result_vec(8 downto 1) := x_vec(7 downto 0);
+			result_vec(0) := x_vec(8);	
 			result := to_integer(unsigned(result_vec));
 			
 		 -- Rotate Left Circuiar of X
 		when alu_cmd_rlc => 
-			result_vec(7 downto 1) := X_vec(6 downto 0);
-			result_vec(0) := X_vec(7);	
+			result_vec(7 downto 1) := x_vec(6 downto 0);
+			result_vec(0) := x_vec(7);	
 			result_vec(8) := x_vec(7);
 			result := to_integer(unsigned(result_vec));
 			
 		-- Rotate Right of X
 		when alu_cmd_rr  =>  
-			result_vec(7 downto 0) := X_vec(8 downto 1);
-			result_vec(8) := X_vec(0);		
+			result_vec(7 downto 0) := x_vec(8 downto 1);
+			result_vec(8) := x_vec(0);		
 			result := to_integer(unsigned(result_vec));
 			
 		-- Rotate Right Circular of X
 		when alu_cmd_rrc =>  
-			result_vec(6 downto 0) := X_vec(7 downto 1);
-			result_vec(7) := X_vec(0);		
-			result_vec(8) := X_vec(0);		
+			result_vec(6 downto 0) := x_vec(7 downto 1);
+			result_vec(7) := x_vec(0);		
+			result_vec(8) := x_vec(0);		
 			result := to_integer(unsigned(result_vec));
 			
 		-- Shift Left Arithmetic of X
 		when alu_cmd_sla =>  
-			result_vec(8 downto 1) := X_vec(7 downto 0);
+			result_vec(8 downto 1) := x_vec(7 downto 0);
 			result_vec(0) :='0';	
 			result := to_integer(unsigned(result_vec));
 			
 		-- Shift Right Arithmetic of X
 		when alu_cmd_sra =>  
-			result_vec(6 downto 0) := X_vec(7 downto 1);
-			result_vec(7) := X_vec(7);		
-			result_vec(8) := X_vec(0);		
+			result_vec(6 downto 0) := x_vec(7 downto 1);
+			result_vec(7) := x_vec(7);		
+			result_vec(8) := x_vec(0);		
 			result := to_integer(unsigned(result_vec));
 			
 		-- Shift Right Logical of X
 		when alu_cmd_srl => 
-			result_vec(6 downto 0) := X_vec(7 downto 1);
+			result_vec(6 downto 0) := x_vec(7 downto 1);
 			result_vec(7) := '0';		
-			result_vec(8) := X_vec(0);		
+			result_vec(8) := x_vec(0);		
 			result := to_integer(unsigned(result_vec));
+
+		-- Let the default values stand.
+		when others =>
+			null;
 			
 		end case;
 		
@@ -426,6 +430,7 @@ begin
 		if (RESET ='1') then 
 			state := read_opcode;
 			prog_cntr <= std_logic_vector(to_unsigned(start_pc,prog_cntr_len)); 
+			cpu_data_out <= (others => '0');
 			reg_SP <= (others => '0'); 
 			flag_Z <= false;
 			flag_C <= false;
@@ -433,7 +438,8 @@ begin
 			flag_I <= false;
 			WR <= false;
 			DS <= false;
-		
+			SIG <= (others => '0');
+			
 		-- Otherwise we repond to the rising edge of CK.
 		elsif rising_edge(CK) then
 		
@@ -446,6 +452,7 @@ begin
 			-- in order to suppress any possible ambiguity.
 			next_state := read_opcode;
 			next_pc := std_logic_vector(unsigned(prog_cntr)+1);
+			cpu_data_out <= (others => '0');
 			next_A := reg_A;
 			next_B := reg_B;
 			next_C := reg_C;
@@ -462,6 +469,7 @@ begin
 			next_flag_I := flag_I;
 			WR <= false;
 			DS <= false;
+			SIG <= (others => '0');
 			
 			-- Read the first byte of the instruction. If the instruction operates only 
 			-- upon register, with no constants involved, it will execute here in one state. 
@@ -604,6 +612,7 @@ begin
 							cpu_data_out(2) <= to_std_logic(flag_C);
 							cpu_data_out(1) <= to_std_logic(flag_S);
 							cpu_data_out(0) <= to_std_logic(flag_Z);
+						when others => null;
 					end case;
 					next_state := read_opcode;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
@@ -619,6 +628,7 @@ begin
 					case opcode is
 						when push_IX => cpu_data_out(ca_top-8 downto 0) <= reg_IX(ca_top downto 8);
 						when push_IY => cpu_data_out(ca_top-8 downto 0) <= reg_IY(ca_top downto 8);
+						when others => null;
 					end case;
 					next_state := write_second_byte;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
@@ -819,8 +829,10 @@ begin
 				when others => 
 					next_state := read_first_operand;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
+
 				end case;
-						
+
+
 			-- Instructions have either one or two operands, which will be provided HI-byte
 			-- first, as the program counter increments through the program space, and our
 			-- byte ordering is big-endian. Here we read the first operand. If we have enough
@@ -949,6 +961,7 @@ begin
 					when jp_c_nn => jump := flag_C;
 					when jp_np_nn => jump := flag_S;
 					when jp_p_nn => jump := not flag_S;
+					when others => null;
 					end case;
 					-- If we are supposed to jump, do so by setting the program counter to
 					-- the specified absolute value. The first operand is the HI byte, the
@@ -960,6 +973,9 @@ begin
 						next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 					end if;
 					next_state := read_opcode;
+					
+				-- Let the defaults stand;
+				when others => null;					
 					
 				end case;
 				
@@ -1009,6 +1025,7 @@ begin
 					case opcode is
 						when pop_IX => next_IX(7 downto 0) := cpu_data_in(7 downto 0);
 						when pop_IY => next_IY(7 downto 0) := cpu_data_in(7 downto 0);
+						when others => null;
 					end case;
 					next_pc := prog_cntr;
 					next_state := read_second_byte;	
@@ -1024,7 +1041,10 @@ begin
 					next_pc(7 downto 0) := cpu_data_in;
 					next_state := read_second_byte;	
 					
-				end case;
+				-- Let the defaults stand;
+				when others => null;
+
+			end case;
 	
 			-- Read the second byte of data. We never increment the program counter from
 			-- this state, but we will set it to a the value popped off the stack by a
@@ -1059,6 +1079,10 @@ begin
 						next_flag_I := false;
 						next_state := read_opcode;
 					end if;
+				
+				-- Let the defaults stand;
+				when others => null;
+				
 				end case;
 			
 			-- Write the second byte of data. We have no "write first byte" state because
@@ -1080,6 +1104,7 @@ begin
 					case opcode is
 						when push_IX => cpu_data_out(7 downto 0) <= reg_IX(7 downto 0);
 						when push_IY => cpu_data_out(7 downto 0) <= reg_IY(7 downto 0);
+						when others => null;
 					end case;
 					next_pc := prog_cntr;
 					next_state := read_opcode;
@@ -1104,6 +1129,9 @@ begin
 							std_logic_vector(to_unsigned((interrupt_pc rem 256),8));
 					end if;
 					next_state := read_opcode;
+				
+				-- Let the defaults stand;
+				when others => null;
 									
 				end case;
 				
@@ -1148,6 +1176,12 @@ begin
 		-- is the opcode. Because the sw_int operation does not use the ALU, no error results from 
 		-- ignoring the override.
 		if (state = read_opcode) then
+		
+			alu_in_x <= reg_A;
+			alu_in_y <= reg_B;
+			alu_cin  <= false;
+			alu_ctrl <= alu_cmd_and;
+			
 			case opcode_now is
 			
 			-- Eight-bit register increment and decrement.
@@ -1229,8 +1263,8 @@ begin
 			-- Shift and Rotate Operations on A. We specify reg_B for alu_in_Y
 			-- because it reduces our logic footprint.
 			when rl_A | rlc_A | rr_A | rrc_A | sla_A | sra_A | srl_A =>
-				alu_in_X <= reg_A;
-				alu_in_Y <= reg_B;
+				alu_in_x <= reg_A;
+				alu_in_y <= reg_B;
 				alu_cin <= flag_C;
 				case opcode_now is 
 					when rl_A  => alu_ctrl <= alu_cmd_rl;
@@ -1239,9 +1273,14 @@ begin
 					when rrc_A => alu_ctrl <= alu_cmd_rrc;
 					when sla_A => alu_ctrl <= alu_cmd_sla;
 					when sra_A => alu_ctrl <= alu_cmd_sra;
-					when srl_A => alu_ctrl <= alu_cmd_srl;				
+					when srl_A => alu_ctrl <= alu_cmd_srl;	
+					when others => null;
 				end case;
-				
+			
+			-- In all other cases, we allow defaults to stand.
+			when others =>
+				null;
+			
 			end case;
 			
 		-- If we are not in the read_opcode state, we have a variable "opcode" that holds
@@ -1251,13 +1290,19 @@ begin
 		-- program data, so we do not use the state machine's "first_operand" variable, but
 		-- the program data directly.
 		else 
+		
+			-- Default values to restrict code without adding complexity.
+			alu_in_x <= reg_A;
+			alu_in_y <= to_integer(unsigned(prog_data));
+			alu_ctrl <= alu_cmd_and;
+			alu_cin <= flag_C and ((opcode = adc_A_n) or (opcode = sbc_A_n));
+
 			case opcode is 
 			
 			-- Operations with A and a constant.
 			when add_A_n | sub_A_n | adc_A_n | sbc_A_n =>
 				alu_in_x <= reg_A;
 				alu_in_y <= to_integer(unsigned(prog_data));
-				alu_cin <= flag_C and ((opcode = adc_A_n) or (opcode = sbc_A_n));
 				if (opcode = add_A_n) or (opcode = adc_A_n) then
 					alu_ctrl <= alu_cmd_add;
 				else 
@@ -1268,19 +1313,20 @@ begin
 			-- because it reduces our logic footprint.
 			when and_A_n =>
 				alu_in_x <= reg_A;
-				alu_in_Y <= reg_B;
 				alu_in_y <= to_integer(unsigned(prog_data));
 				alu_ctrl <= alu_cmd_and;
 			when or_A_n =>
 				alu_in_x <= reg_A;
-				alu_in_Y <= reg_B;
 				alu_in_y <= to_integer(unsigned(prog_data));
 				alu_ctrl <= alu_cmd_or;
 			when xor_A_n =>
 				alu_in_x <= reg_A;
-				alu_in_Y <= reg_B;
 				alu_in_y <= to_integer(unsigned(prog_data));
 				alu_ctrl <= alu_cmd_xor;
+				
+			-- In all other cases, allow defaults to stand.
+			when others =>
+				null;
 			
 			end case;
 		end if;
@@ -1295,6 +1341,7 @@ begin
 			when read_second_byte => SIG(2 downto 0) <= "101";
 			when write_second_byte => SIG(2 downto 0) <= "110";
 			when incr_pc => SIG(2 downto 0) <= "111";
+			when others => SIG(2 downto 0) <= "000";
 		end case;
 	end process;
 end behavior;
