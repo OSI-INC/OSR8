@@ -28,11 +28,19 @@
 -- initialization. The initial stack will allow the CPU program to load the
 -- stack pointer with a new value.
 
--- Version 4: Plan to support faster boost and more efficient un-boost.
+-- Version 4: Plan to support faster boost and more efficient un-boost. Work
+-- on instability, and try to remove unnecessary instructions.
 
 -- [10-FEB-26] Eliminate the intermediate variable prog_cntr, change all
 -- occurances of prog_addr to prog_cntr. Results in no change in the logic
 -- resource allocation.
+
+-- [15-FEB-26, others branch] In the face of chronic instability in the code, 
+-- we embark upon constraining all our case statements and combinatorial logic, 
+-- which increases compiled size by about 50 LUTs. We see no examples of our using
+-- instructions: inc E, dec E, inc H, dec H, inc L, dec L, inc SP, or dec SP.
+-- We eliminate these instructions and the code shrinks by 100 LUTs, and now fits
+-- in the P3041.
 
 library ieee;  
 use ieee.std_logic_1164.all;
@@ -430,7 +438,6 @@ begin
 		if (RESET ='1') then 
 			state := read_opcode;
 			prog_cntr <= std_logic_vector(to_unsigned(start_pc,prog_cntr_len)); 
-			cpu_data_out <= (others => '0');
 			reg_SP <= (others => '0'); 
 			flag_Z <= false;
 			flag_C <= false;
@@ -452,7 +459,6 @@ begin
 			-- in order to suppress any possible ambiguity.
 			next_state := read_opcode;
 			next_pc := std_logic_vector(unsigned(prog_cntr)+1);
-			cpu_data_out <= (others => '0');
 			next_A := reg_A;
 			next_B := reg_B;
 			next_C := reg_C;
@@ -727,24 +733,6 @@ begin
 					next_flag_S := (alu_out >= 128);
 					next_state := read_opcode;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
-				when dec_E | inc_E => 
-					next_E := alu_out;
-					next_flag_Z := (alu_out = 0);
-					next_flag_S := (alu_out >= 128);
-					next_state := read_opcode;
-					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
-				when dec_H | inc_H => 
-					next_H := alu_out;
-					next_flag_Z := (alu_out = 0);
-					next_flag_S := (alu_out >= 128);
-					next_state := read_opcode;
-					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
-				when dec_L | inc_L => 
-					next_L := alu_out;
-					next_flag_Z := (alu_out = 0);
-					next_flag_S := (alu_out >= 128);
-					next_state := read_opcode;
-					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 					
 				-- Address pointer increments and decrements. These do not affect the
 				-- carry, sign, or zero flags. We use our combinatorial incrementer to
@@ -763,14 +751,6 @@ begin
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 				when dec_IY => 
 					next_IY := std_logic_vector(unsigned(reg_IY)-1);
-					next_state := read_opcode;
-					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
-				when inc_SP => 
-					next_SP := std_logic_vector(unsigned(reg_SP)+1);
-					next_state := read_opcode;
-					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
-				when dec_SP => 
-					next_SP := std_logic_vector(unsigned(reg_SP)-1);
 					next_state := read_opcode;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 					
@@ -829,9 +809,8 @@ begin
 				when others => 
 					next_state := read_first_operand;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
-
+					
 				end case;
-
 
 			-- Instructions have either one or two operands, which will be provided HI-byte
 			-- first, as the program counter increments through the program space, and our
@@ -952,7 +931,6 @@ begin
 				-- value. Clock Cycles = 3.
 				when jp_nn | jp_z_nn | jp_nz_nn | jp_nc_nn 
 						| jp_c_nn | jp_np_nn | jp_p_nn =>
-					jump := false;
 					case opcode is 		
 					when jp_nn => jump := true;
 					when jp_z_nn => jump := flag_Z;
@@ -1011,6 +989,7 @@ begin
 							next_flag_C := (cpu_data_in(2) = '1');		
 							next_flag_S := (cpu_data_in(1) = '1');
 							next_flag_Z := (cpu_data_in(0) = '1');
+						when others => null;
 					end case;
 					next_pc := prog_cntr;
 					next_state := read_opcode;
@@ -1173,8 +1152,8 @@ begin
 		-- the ALU. If we are in the read_opcode state and we receive an interrupt request, the 
 		-- CPU will service the interrupt by overriding the value of prog_data with an sw_int 
 		-- opcode. The ALU ignores this override and behaves as if the value on prog_data 
-		-- is the opcode. Because the sw_int operation does not use the ALU, no error results from 
-		-- ignoring the override.
+		-- is the opcode. Because the sw_int operation does not use the ALU, no error results 
+		-- from ignoring the override.
 		if (state = read_opcode) then
 		
 			alu_in_x <= reg_A;
@@ -1208,24 +1187,6 @@ begin
 				alu_in_y <= 1;
 				alu_cin <= false;
 				if (opcode_now = inc_D) then alu_ctrl <= alu_cmd_add;
-				else alu_ctrl <= alu_cmd_sub; end if;	
-			when inc_E | dec_E =>
-				alu_in_x <= reg_E;
-				alu_in_y <= 1;
-				alu_cin <= false;
-				if (opcode_now = inc_E) then alu_ctrl <= alu_cmd_add; 
-				else alu_ctrl <= alu_cmd_sub; end if;	
-			when inc_H | dec_H =>
-				alu_in_x <= reg_H;
-				alu_in_y <= 1;
-				alu_cin <= false;
-				if (opcode_now = inc_H) then alu_ctrl <= alu_cmd_add; 
-				else alu_ctrl <= alu_cmd_sub; end if;	
-			when inc_L | dec_L =>
-				alu_in_x <= reg_L;
-				alu_in_y <= 1;
-				alu_cin <= false;
-				if (opcode_now = inc_L) then alu_ctrl <= alu_cmd_add; 
 				else alu_ctrl <= alu_cmd_sub; end if;	
 				
 			-- The delay instruction decrements A until it is zero.
@@ -1291,11 +1252,10 @@ begin
 		-- the program data directly.
 		else 
 		
-			-- Default values to restrict code without adding complexity.
 			alu_in_x <= reg_A;
-			alu_in_y <= to_integer(unsigned(prog_data));
+			alu_in_y <= reg_B;
+			alu_cin  <= false;
 			alu_ctrl <= alu_cmd_and;
-			alu_cin <= flag_C and ((opcode = adc_A_n) or (opcode = sbc_A_n));
 
 			case opcode is 
 			
