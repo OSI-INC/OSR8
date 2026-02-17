@@ -16,31 +16,35 @@
 -- along with this program; if not, write to the Free Software
 -- Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
--- Version 3: Developed for the A3041 Implantable Stimulator-Transponder
-
--- [11-APR-22] Introduce constants that calculate correct vector sizes in
--- the processor so as to adapt automatically to new program and cpu memory
--- sizes. Improve implementation of stack overflow signal, which now remains
--- asserted until RESET.
-
--- [18-JUN-22] Remove stack overflow flag. Stack pointer always resets to
--- zero, so CPU must have RAM at address zero to use as initial stack during
--- initialization. The initial stack will allow the CPU program to load the
--- stack pointer with a new value.
-
--- Version 4: Plan to support faster boost and more efficient un-boost. Work
--- on instability, and try to remove unnecessary instructions.
+-- Version 4: Developed for the A3054 Intraperitoneal Transmitter
 
 -- [10-FEB-26] Eliminate the intermediate variable prog_cntr, change all
--- occurances of prog_addr to prog_cntr. Results in no change in the logic
--- resource allocation.
+-- occurances of prog_addr to prog_cntr. These changes are cosmetic only,
+-- but also have the effect of making the OSR8V4 incompatible with a port
+-- interface created for the OSR8V3.
 
--- [15-FEB-26, others branch] In the face of chronic instability in the code, 
--- we embark upon constraining all our case statements and combinatorial logic, 
--- which increases compiled size by about 50 LUTs. We see no examples of our using
--- instructions: inc E, dec E, inc H, dec H, inc L, dec L, inc SP, or dec SP.
--- We eliminate these instructions and the code shrinks by 100 LUTs, and now fits
--- in the P3041.
+-- [15-FEB-26] In the face of chronic instability, we resolve to constrain
+-- the behavior of all registered and combinatorial logic. In the case of-- registered logic, we make sure all our case statements include "others null"
+-- to make it clear to the compiler that all registers should hold their value
+-- unless stated otherwise. in combinatorial logic, we provide default values
+-- for all signals, and include "others null" in case statements as well, so 
+-- that there is no state in which the compiler does not know what the correct
+-- value of the signal should be. If we do not tell the compiler the correct
+-- value of Y for input X, the compiler either proves to itself that X can never
+-- occur, or it fails in this proof and creates latches to preserve the state
+-- of Y when X arises. These latches are vulnerable to glitches, and they will
+-- appear and disappear from our logic as the compiler's optimization fails 
+-- or succeeds in proving that X will never occur. The addition of these 
+-- constraints increases the code size by 50 LUTs, making it impossible to
+-- fit the constrained OSR8 in the P3041 logic chip.
+
+-- We must reduce the size of the OSR8. We see no examples of our using
+-- instructions inc E, dec E, inc H, dec H, inc L, dec L, inc SP, or dec SP.
+-- All of these can be created by combinations of other instructions. For
+-- example, "inc SP" could be "push A", because pushing a byte onto the stack
+-- increments the stack pointer. We can do "inc E" with "push A, push E, pop A,
+-- inc A, push A, pop E, pop A". We eliminate these instructions and the code 
+-- shrinks by 100 LUTs, and now fits in the P3041.
 
 library ieee;  
 use ieee.std_logic_1164.all;
@@ -49,18 +53,11 @@ use ieee.numeric_std.all;
 -- The CPU requires seprate program and process memory. Process and program memory 
 -- can be anything from 1 kByte to 64 kByte.
 
--- The program memory read cycles should be clocked on the falling edge of CK. We 
--- see no reason program memory cannot be read on the rising edges of CK, but when
--- we switch to reading on the rising edge, we find our peripherals don't work any
--- more. In theory, if we re-built our peripherals, we could clock both CPU and 
--- program memory on the rising edges of CK and gain more time for decoding
--- instruction bytes. 
-
--- The program memory write cycles, if supported by the peripherals, are how 
--- the user can upload dynamic code into the embedded computer. The CPU must write
--- to dual-port program memory on the rising edge of CK, on account of this same
--- memory being read on the falling edge. Dual-port memory does not function 
--- correctly unless the write and read clocks are offset.
+-- The program memory read cycles must be clocked on the falling edge of CK. 
+-- The program memory write cycles, if supported by peripherals, are how the
+-- user can upload code into the embedded controller. The CPU must write to
+-- a dual-port program memory on the rising edge of CK, on account of this same
+-- memory being read by the CPU on the falling edge. Dual-port memory does not-- function correctly unless the write and read clocks are offset.
 
 -- The process memory must be clocked on the falling edge of CK. The CPU increments 
 -- the program counter on the rising edge of CK. When it asserts WR and DS, it does
@@ -70,18 +67,21 @@ use ieee.numeric_std.all;
 -- a write cycle, the CPU expects the write to take place on the falling edge of
 -- CK after it asserts DS and WR. 
 
--- The IRQ signal is for an interrupt request. The external memory management unit (MMU) 
--- must provide a way for the CPU to clear the IRQ signal so it can get back to its main
--- program.
+-- The IRQ signal is the interrupt request line from external logic. The memory 
+-- management unit (MMU) must provide a way for the CPU to clear the IRQ signal 
+-- so it can get back to its main program.
 
--- The RESET signal will put the CPU back to program location zero. Execution begins
--- at location start_pc, where we expect a three-byte un-conditional jump instruction. 
--- Interrupt execution begins at interrupt_pc, where we expect another jp_nn instruction. 
+-- The RESET signal will put the CPU back to program location zero and clear the 
+-- stack pointer. Execution begins at location start_pc. Most likely, the program
+-- will provide a three-byte un-conditional jump instruction at this location. 
+-- Interrupt execution begins at interrupt_pc, where we will most likely fine
+-- another jp_nn instruction. 
 
--- The stack pointer is upward-going, initialized to zero. Byte ordering for pointers is 
--- big-endian. The most significant, or HI byte is at the lower address and the lease 
--- significant, or LO byte, is at the higher address. The HI byte of the pointer will 
--- contain from one to eight neccessary bits, depending upon the memory available to the CPU. 
+-- The stack pointer is upward-going and initialized to zero. Byte ordering for 
+-- pointers is big-endian. The most significant, or HI byte is at the lower address 
+-- and the lease significant, or LO byte, is at the higher address. The HI byte of 
+-- the pointer will contain from one to eight neccessary bits, depending upon the 
+-- memory available to the CPU. 
 
 entity OSR8_CPU is 
 	generic (
@@ -98,7 +98,7 @@ entity OSR8_CPU is
 		WR : out boolean; -- Write Cycle
 		DS : out boolean; -- Data Strobe
 		IRQ : in boolean; -- Interrupt Request
-		SIG : out std_logic_vector(2 downto 0); -- Signals for Debugging
+		SIG : out std_logic_vector(3 downto 0); -- Signals for Debugging
 		RESET : in std_logic; -- Hard Reset
 		CK : in std_logic); -- The clock, duty cycle 50%.
 
@@ -117,10 +117,8 @@ architecture behavior of OSR8_CPU is
 -- language. We use "n" for an eight-bit constant, "nn" for a sixteen-bit
 -- constant, "(nn)" for the location with address nn, "(IX)" for the location
 -- with address given by index register IX, "jp nz" for jump if not zero,
--- "ld" for "load", and so on, as in Z80 assembly language. The set of OSR8
--- instructions is less numberous than Z80, but neither is it a subset of
--- the Z80 instruction set. For example, Z80 does not provide "push A",
--- while OSR8 does not provide "push BC".
+-- "ld" for "load", and so on. Our syntax for assembler code follows that
+-- of the venerable Z80 microprocessors.
 
 	constant nop      : integer := 16#00#; -- nop
 	constant jp_nn    : integer := 16#01#; -- jp nn
@@ -189,10 +187,6 @@ architecture behavior of OSR8_CPU is
 	constant inc_B    : integer := 16#51#; -- inc B
 	constant inc_C    : integer := 16#52#; -- inc C
 	constant inc_D    : integer := 16#53#; -- inc D
-	constant inc_E    : integer := 16#54#; -- inc E
-	constant inc_H    : integer := 16#55#; -- inc H
-	constant inc_L    : integer := 16#56#; -- inc L
-	constant inc_SP   : integer := 16#57#; -- inc SP
 	constant inc_IX   : integer := 16#59#; -- inc IX
 	constant inc_IY   : integer := 16#5A#; -- inc IY
 
@@ -200,11 +194,7 @@ architecture behavior of OSR8_CPU is
 	constant dec_B    : integer := 16#61#; -- dec B
 	constant dec_C    : integer := 16#62#; -- dec C
 	constant dec_D    : integer := 16#63#; -- dec D
-	constant dec_E    : integer := 16#64#; -- dec E
-	constant dec_H    : integer := 16#65#; -- dec H
-	constant dec_L    : integer := 16#66#; -- dec L
 	constant dly_A    : integer := 16#67#; -- dly A
-	constant dec_SP   : integer := 16#68#; -- dec SP
 	constant dec_IX   : integer := 16#69#; -- dec IX
 	constant dec_IY   : integer := 16#6A#; -- dec IY
 	
@@ -289,7 +279,7 @@ begin
 
 -- The Arithmetic Logic Unit provides an eight-bit adder-subtractor with carry 
 -- in and carry out, as well as logical operations AND, OR, and XOR.
-	CPU_ALU : process (alu_ctrl,alu_cin,alu_in_x,alu_in_y) is
+	CPU_ALU : process (all) is
 	variable result : integer range 0 to 511;
 	variable result_vec : std_logic_vector(8 downto 0);
 	variable x_vec : std_logic_vector(8 downto 0);
@@ -391,7 +381,7 @@ begin
 -- Its program memory is separate and private. The CPU instruction set is sufficient 
 -- for all integer arithmetic, register exchanges, recursive subroutines, concurrent 
 -- processes, and efficient block moves. 
-	CPU : process (CK,RESET) is
+	CPU : process (all) is
 	
 		-- The next_r variables we use to set up the value of A that will be asserted 
 		-- on the next rising edge of CK.
@@ -451,12 +441,7 @@ begin
 		elsif rising_edge(CK) then
 		
 			-- Define default next values. We end up stating explicitly what
-			-- the next state and next program counter will be. We find that 
-			-- adding or removing a single, redundant, logic expression can 
-			-- change the code size by up to 30 LUTs. We suspect a bug somewhere
-			-- in our code that makes our logic definition ambiguous, so we
-			-- specify the program counter and next state as often as we can
-			-- in order to suppress any possible ambiguity.
+			-- the next state and next program counter will be.
 			next_state := read_opcode;
 			next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 			next_A := reg_A;
@@ -484,11 +469,14 @@ begin
 			-- instead of the instruction pointed to by the program counter.
 			if (state = read_opcode) then
 			
+				SIG(0) <= '1';
+				
 				-- We override the opcode provided by the program data when we have an
 				-- interrupt request and we are not currently servicing an interrupt, this
 				-- latter condition being indicated by flag_I.
 				if IRQ and (not flag_I) then
 					opcode := sw_int;
+					SIG(2) <= '1';
 				else
 					opcode := to_integer(unsigned(prog_data));
 				end if;			
@@ -502,7 +490,8 @@ begin
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 					
 				-- The wait operation stays in this one place until we receive an
-				-- interrupt. It clears the interrupt flag. Clock Cycles = 1.
+				-- interrupt. It clears the interrupt flag, and so must not be
+				-- executed within an interrupt. Clock Cycles = 1.
 				when cpu_wt =>
 					next_flag_I := false;
 					next_pc := prog_cntr;
@@ -522,16 +511,13 @@ begin
 				-- We handle an interrupt by freezing the program counter and 
 				-- pushing its value onto the stack before jumping to the hard-wired
 				-- interrupt handler address. We begin by pushing the HI byte of 
-				-- the program counter onto the stack. We set flag_I when IRQ is 
-				-- asserted, so that we can begin normal instruction execution once 
-				-- we have jumped to the interrupt routine: flag_I blocks the execution
-				-- of interrupts. The interrupt routine must clear the Interrupt Request
-				-- signal (IRQ), or else the main process will be interrupted again upon 
-				-- return. The interrupt routine should use the return from interrupt 
-				-- instruction (ret_int, pneumonic "rti"), which will clear flag_I upon 
-				-- return and execute the interrupted instruction, in the case of an
-				-- IRQ-provoked interrupt, or execute the next instruction, in the case
-				-- of an interrupt provoked by an "int" instruction. Clock Cycles = 2.
+				-- the program counter onto the stack. We set flag_I so that the
+				-- interrupt cannot itself be interrupted. The interrupt routine 
+				-- must do something to clear the Interrupt Request signal (IRQ) 
+				-- or else the main process will be interrupted again upon return. 
+				-- The interrupt routine should use the return from interrupt 
+				-- instruction (ret_int or "rti"), which will clear flag_I upon 
+				-- return and execute the interrupted instruction. Clock Cycles = 2.
 				when sw_int =>
 					next_SP := std_logic_vector(unsigned(reg_SP)+1);
 					cpu_addr <= std_logic_vector(unsigned(reg_SP)+1);
@@ -539,7 +525,7 @@ begin
 					DS <= true;
 					cpu_data_out <= (others => '0');
 					cpu_data_out(pa_top-8 downto 0) <= prog_cntr(pa_top downto 8);
-					if IRQ then next_flag_I := true; end if;
+					next_flag_I := true;
 					next_state := write_second_byte;
 					next_pc := prog_cntr;
 
@@ -1009,8 +995,8 @@ begin
 					next_pc := prog_cntr;
 					next_state := read_second_byte;	
 					
-				-- Read the LO byte of the program counter from the stack and prepare to read the HI
-				-- byte in read_second_byte.
+				-- Read the LO byte of the program counter from the stack and prepare to read 
+				-- the HI byte in read_second_byte.
 				when ret_cll | ret_int =>
 					next_SP := std_logic_vector(unsigned(reg_SP)-1);
 					cpu_addr <= reg_SP;
@@ -1045,17 +1031,18 @@ begin
 				-- LO byte of the program counter from the stack, decremented
 				-- the stack pointer, and now we are reading the HI byte. We use the 
 				-- incr_pc state to increment the program counter so as to select
-				-- the next instruction when we are returning from call_nn or
-				-- sw_int, but if this is an interrupt return with flag_I set,
-				-- we leave the program counter as it is and clear flag_I so we 
-				-- can execute the instruction that was interrupted.
+				-- the next instruction when we are returning from call_nn. But if
+				-- we are returning from an interrupt, we leave the program counter 
+				-- as it is and clear flag_I so we can execute the instruction that 
+				-- was interrupted and be ready for the next interrupt.
 				when ret_cll | ret_int =>
 					next_pc(pa_top downto 8) := cpu_data_in(pa_top-8 downto 0);
 					next_pc(7 downto 0) := prog_cntr(7 downto 0);	
-					if (not flag_I) or (opcode = ret_cll) then
+					if opcode = ret_cll then
 						next_state := incr_pc;
 					else 
 						next_flag_I := false;
+						SIG(1) <= '1';
 						next_state := read_opcode;
 					end if;
 				
@@ -1088,9 +1075,9 @@ begin
 					next_pc := prog_cntr;
 					next_state := read_opcode;
 					
-				-- Here we are completing a CALL or sw_int instruction by pushing the LO byte 
-				-- of the program counter onto the stack, and setting the next value of the
-				-- program counter to the address given by the first operand (HI byte) and second
+				-- Here we are completing a call or sw_int by pushing the LO byte of the 
+				-- program counter onto the stack, and setting the next value of the program 
+				-- counter to the address given by the first operand (HI byte) and second
 				-- operand (LO byte).
 				when call_nn | sw_int =>
 					next_SP := std_logic_vector(unsigned(reg_SP)+1);
@@ -1099,11 +1086,13 @@ begin
 					DS <= true;
 					cpu_data_out <= prog_cntr(7 downto 0);
 					if (opcode = call_nn) then
-						next_pc(pa_top downto 8) := std_logic_vector(to_unsigned(first_operand,prog_cntr_len-8));
-						next_pc(7 downto 0) := std_logic_vector(to_unsigned(second_operand,8));
+						next_pc(pa_top downto 8) := 
+							std_logic_vector(to_unsigned(first_operand,prog_cntr_len-8));
+						next_pc(7 downto 0) := 
+							std_logic_vector(to_unsigned(second_operand,8));
 					else
 						next_pc(pa_top downto 8) := 
-							std_logic_vector(to_unsigned((interrupt_pc / 256),prog_cntr_len-8));
+							std_logic_vector(to_unsigned((interrupt_pc/256),prog_cntr_len-8));
 						next_pc(7 downto 0) := 
 							std_logic_vector(to_unsigned((interrupt_pc rem 256),8));
 					end if;
@@ -1140,6 +1129,7 @@ begin
 			flag_S <= next_flag_S;
 			flag_Z <= next_flag_Z;
 			flag_I <= next_flag_I;
+			SIG(3) <= to_std_logic(flag_I);
 		end if;
 				-- Here we have combinatorial logic that applies the Arithmetic Logic Unit to eight-bit 
 		-- registers and constants. One of the two inputs to the ALU is always the accumulator,
@@ -1290,19 +1280,6 @@ begin
 			
 			end case;
 		end if;
-		
-		-- Assign the diagnostic signal vector, which may or may not be used in the 
-		-- main program to drive test poins or interrupts.
-		case state is
-			when read_opcode => SIG(2 downto 0) <= "001";
-			when read_first_operand => SIG(2 downto 0) <= "010";
-			when read_second_operand => SIG(2 downto 0) <= "011";
-			when read_first_byte => SIG(2 downto 0) <= "100";
-			when read_second_byte => SIG(2 downto 0) <= "101";
-			when write_second_byte => SIG(2 downto 0) <= "110";
-			when incr_pc => SIG(2 downto 0) <= "111";
-			when others => SIG(2 downto 0) <= "000";
-		end case;
 	end process;
 end behavior;
 
