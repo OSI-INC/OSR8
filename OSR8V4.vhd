@@ -468,15 +468,15 @@ begin
 			-- decoding this instruction, by executing a non-maskable interrupt instruction 
 			-- instead of the instruction pointed to by the program counter.
 			if (state = read_opcode) then
-			
-				SIG(0) <= '1';
+					
+				SIG(0) <= '1';	
 				
 				-- We override the opcode provided by the program data when we have an
 				-- interrupt request and we are not currently servicing an interrupt, this
 				-- latter condition being indicated by flag_I.
 				if IRQ and (not flag_I) then
 					opcode := sw_int;
-					SIG(2) <= '1';
+					SIG(1) <= '1';
 				else
 					opcode := to_integer(unsigned(prog_data));
 				end if;			
@@ -921,16 +921,19 @@ begin
 					when jp_nn => jump := true;
 					when jp_z_nn => jump := flag_Z;
 					when jp_nz_nn => jump := not flag_Z;
-					when jp_nc_nn => jump := not flag_C;
+					when jp_nc_nn => 
+						jump := not flag_C;
+						SIG(2) <= '1';
 					when jp_c_nn => jump := flag_C;
 					when jp_np_nn => jump := flag_S;
 					when jp_p_nn => jump := not flag_S;
-					when others => null;
+					when others => jump := false;
 					end case;
 					-- If we are supposed to jump, do so by setting the program counter to
 					-- the specified absolute value. The first operand is the HI byte, the
 					-- second the LO byte.
 					if jump then
+						SIG(3) <= '1';
 						next_pc(pa_top downto 8) := std_logic_vector(to_unsigned(first_operand,prog_cntr_len-8));
 						next_pc(7 downto 0) := std_logic_vector(to_unsigned(second_operand,8));
 					else
