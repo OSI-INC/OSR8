@@ -417,10 +417,9 @@ begin
 		
 		-- A variable to store the top byte of the program counter.
 		variable prog_lo : std_logic_vector(1 downto 0);
-	
-		-- We uset the jump variable to determine if any of the various jump
-		-- conditions have been satisfied.
-		variable jump : boolean;		
+		
+		-- A variable to track changes in the diagnostic outputs.
+		variable next_SIG : std_logic_vector(3 downto 0);
 						
 	begin
 
@@ -460,7 +459,7 @@ begin
 			next_flag_I := flag_I;
 			WR <= false;
 			DS <= false;
-			SIG <= (others => '0');
+			next_SIG := (others => '0');
 			
 			-- Read the first byte of the instruction. If the instruction operates only 
 			-- upon register, with no constants involved, it will execute here in one state. 
@@ -469,14 +468,14 @@ begin
 			-- instead of the instruction pointed to by the program counter.
 			if (state = read_opcode) then
 					
-				SIG(0) <= '1';	
+				next_SIG(0) := '1';	
 				
 				-- We override the opcode provided by the program data when we have an
 				-- interrupt request and we are not currently servicing an interrupt, this
 				-- latter condition being indicated by flag_I.
 				if IRQ and (not flag_I) then
 					opcode := sw_int;
-					SIG(1) <= '1';
+					next_SIG(1) := '1';
 				else
 					opcode := to_integer(unsigned(prog_data));
 				end if;			
@@ -857,8 +856,10 @@ begin
 				-- DS and not WR. We read the value of the target location in the next
 				-- clock cycle, in the read_first_byte state. Clock Cycles = 4.
 				when ld_A_mm =>
-					cpu_addr(ca_top downto 8) <= std_logic_vector(to_unsigned(first_operand,cpu_addr_len-8));
-					cpu_addr(7 downto 0) <= std_logic_vector(to_unsigned(second_operand,8));
+					cpu_addr(ca_top downto 8) <= 
+						std_logic_vector(to_unsigned(first_operand,cpu_addr_len-8));
+					cpu_addr(7 downto 0) <= 
+						std_logic_vector(to_unsigned(second_operand,8));
 					WR <= false;
 					DS <= true;
 					next_state := read_first_byte;
@@ -870,7 +871,8 @@ begin
 				-- to be written in the middle of the next cycle, while we get on with
 				-- decoding the next instruction. Clock Cycles = 3.
 				when ld_mm_A =>
-					cpu_addr(ca_top downto 8) <= std_logic_vector(to_unsigned(first_operand,cpu_addr_len-8));
+					cpu_addr(ca_top downto 8) <= 
+						std_logic_vector(to_unsigned(first_operand,cpu_addr_len-8));
 					cpu_addr(7 downto 0) <= std_logic_vector(to_unsigned(second_operand,8));
 					cpu_data_out <= std_logic_vector(to_unsigned(reg_A,8));
 					WR <= true;
@@ -915,28 +917,21 @@ begin
 				-- Decide if we should jump to the address specified by the two operands. If
 				-- so, we will jump immediately by loading the program counter with a new 
 				-- value. Clock Cycles = 3.
-				when jp_nn | jp_z_nn | jp_nz_nn | jp_nc_nn 
-						| jp_c_nn | jp_np_nn | jp_p_nn =>
-					case opcode is 		
-					when jp_nn => jump := true;
-					when jp_z_nn => jump := flag_Z;
-					when jp_nz_nn => jump := not flag_Z;
-					when jp_nc_nn => 
-						jump := not flag_C;
-						SIG(2) <= '1';
-					when jp_c_nn => jump := flag_C;
-					when jp_np_nn => jump := flag_S;
-					when jp_p_nn => jump := not flag_S;
-					when others => jump := false;
-					end case;
-					-- If we are supposed to jump, do so by setting the program counter to
-					-- the specified absolute value. The first operand is the HI byte, the
-					-- second the LO byte.
-					if jump then
-						SIG(3) <= '1';
-						next_pc(pa_top downto 8) := std_logic_vector(to_unsigned(first_operand,prog_cntr_len-8));
-						next_pc(7 downto 0) := std_logic_vector(to_unsigned(second_operand,8));
-					else
+				when jp_nn | jp_z_nn | jp_nz_nn | jp_c_nn | jp_nc_nn | jp_p_nn | jp_np_nn =>
+					next_SIG(2) := '1';
+					if (opcode = jp_nn) or 
+						((opcode = jp_z_nn) and flag_Z) or
+						((opcode = jp_nz_nn) and (not flag_Z)) or
+						((opcode = jp_c_nn) and flag_C) or
+						((opcode = jp_nc_nn) and (not flag_C)) or
+						((opcode = jp_p_nn) and (not flag_S)) or
+						((opcode = jp_np_nn) and flag_S) then
+						next_SIG(3) := '1';
+						next_pc(pa_top downto 8) := 
+							std_logic_vector(to_unsigned(first_operand,prog_cntr_len-8));
+						next_pc(7 downto 0) := 
+							std_logic_vector(to_unsigned(second_operand,8));
+					else 
 						next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 					end if;
 					next_state := read_opcode;
@@ -1045,7 +1040,7 @@ begin
 						next_state := incr_pc;
 					else 
 						next_flag_I := false;
-						SIG(1) <= '1';
+						next_SIG(1) := '1';
 						next_state := read_opcode;
 					end if;
 				
@@ -1132,7 +1127,7 @@ begin
 			flag_S <= next_flag_S;
 			flag_Z <= next_flag_Z;
 			flag_I <= next_flag_I;
-			SIG(3) <= to_std_logic(flag_I);
+			SIG <= next_SIG;
 		end if;
 				-- Here we have combinatorial logic that applies the Arithmetic Logic Unit to eight-bit 
 		-- registers and constants. One of the two inputs to the ALU is always the accumulator,
