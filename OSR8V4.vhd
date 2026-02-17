@@ -435,6 +435,7 @@ begin
 			flag_I <= false;
 			WR <= false;
 			DS <= false;
+			jump := false;
 			SIG <= (others => '0');
 			
 		-- Otherwise we repond to the rising edge of CK.
@@ -460,6 +461,7 @@ begin
 			next_flag_I := flag_I;
 			WR <= false;
 			DS <= false;
+			jump := false;
 			SIG <= (others => '0');
 			
 			-- Read the first byte of the instruction. If the instruction operates only 
@@ -925,7 +927,7 @@ begin
 					when jp_c_nn => jump := flag_C;
 					when jp_np_nn => jump := flag_S;
 					when jp_p_nn => jump := not flag_S;
-					when others => null;
+					when others => jump := false;
 					end case;
 					-- If we are supposed to jump, do so by setting the program counter to
 					-- the specified absolute value. The first operand is the HI byte, the
