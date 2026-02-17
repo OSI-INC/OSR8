@@ -40,11 +40,25 @@
 
 -- We must reduce the size of the OSR8. We see no examples of our using
 -- instructions inc E, dec E, inc H, dec H, inc L, dec L, inc SP, or dec SP.
--- All of these can be created by combinations of other instructions. For
--- example, "inc SP" could be "push A", because pushing a byte onto the stack
--- increments the stack pointer. We can do "inc E" with "push A, push E, pop A,
--- inc A, push A, pop E, pop A". We eliminate these instructions and the code 
--- shrinks by 100 LUTs, and now fits in the P3041.
+-- The increments and decrements can be reproduced by a sequence of remaining
+-- instructions, as in "inc E" can be achieved with "push A; push E; pop A;
+-- inc A; push A; pop E; pop A". We can do "dec SP" with "pop A", but only
+-- if we don't care about the value of A. And we see no way to do "inc SP".
+-- But if we want to read or write from locations in the stack, we can do 
+-- "ld HL,SP; push H; push L; pop IX" to put SP in IX. Now we can increment 
+-- and decrement IX to point to the correct locations. After eliminating these 
+-- eight instructions, the OSR8 shrinks by 100 LUTs and the P3041 logic fits 
+-- in its LCMXO2-1200ZE.
+
+-- Our "jp nc" instruction is failing in our P3041 code. The jump always takes
+-- place. Our use of a variable "jump" is failing because we deleted its 
+-- default value "false". Before adding "jump := false", code is 1206 LUTs. 
+-- Afterwards, it is 1231 LUTs. We write this incident up in the A3041
+-- development page as a clear example of "variables" being implemented
+-- incorrectly. We change our "case" statement to a complete conditional
+-- clause and eliminate the use of the variable, which we had in place only
+-- for clarity.
+-- for clarity.
 
 library ieee;  
 use ieee.std_logic_1164.all;
@@ -216,7 +230,7 @@ architecture behavior of OSR8_CPU is
 -- Attributes to guide the compiler.
 	attribute syn_keep : boolean;
 	attribute nomerge : string;
-
+	
 -- Arithmetic Logic Unit signals and constants
 	signal alu_out : integer range 0 to 255;
 	attribute syn_keep of alu_out : signal is true;
@@ -427,6 +441,7 @@ begin
 		-- Reset the cpu state and program counter until we enter standby mode.
 		if (RESET ='1') then 
 			state := read_opcode;
+			jump := false;
 			prog_cntr <= std_logic_vector(to_unsigned(start_pc,prog_cntr_len)); 
 			reg_SP <= (others => '0'); 
 			flag_Z <= false;
@@ -435,7 +450,6 @@ begin
 			flag_I <= false;
 			WR <= false;
 			DS <= false;
-			jump := false;
 			SIG <= (others => '0');
 			
 		-- Otherwise we repond to the rising edge of CK.
@@ -459,9 +473,9 @@ begin
 			next_flag_Z := flag_Z;
 			next_flag_S := flag_S;
 			next_flag_I := flag_I;
+			jump := false;
 			WR <= false;
 			DS <= false;
-			jump := false;
 			SIG <= (others => '0');
 			
 			-- Read the first byte of the instruction. If the instruction operates only 
@@ -481,8 +495,8 @@ begin
 					SIG(2) <= '1';
 				else
 					opcode := to_integer(unsigned(prog_data));
-				end if;			
-				
+				end if;		
+
 				-- Decode the instruction.
 				case opcode is
 				
@@ -919,6 +933,7 @@ begin
 				-- value. Clock Cycles = 3.
 				when jp_nn | jp_z_nn | jp_nz_nn | jp_nc_nn 
 						| jp_c_nn | jp_np_nn | jp_p_nn =>
+					jump := false;
 					case opcode is 		
 					when jp_nn => jump := true;
 					when jp_z_nn => jump := flag_Z;
@@ -1116,7 +1131,7 @@ begin
 			
 			-- Assert the new state, program counter, and register values for the next clock cycle.
 			prog_cntr <= next_pc; 
-			state := next_state;					
+			state := next_state;
 			reg_A <= next_A;
 			reg_B <= next_B;
 			reg_C <= next_C;
@@ -1133,12 +1148,7 @@ begin
 			flag_I <= next_flag_I;
 			SIG(3) <= to_std_logic(flag_I);
 		end if;
-				-- Here we have combinatorial logic that applies the Arithmetic Logic Unit to eight-bit 
-		-- registers and constants. One of the two inputs to the ALU is always the accumulator,
-		-- which we name reg_A in the code. We use the ALU to increment and decrement registers
-		-- as well as add, subtract, shift, rotate, and combine them logically. 
-		opcode_now := to_integer(unsigned(prog_data));
-		
+				
 		-- We begin with the behavior of the ALU when we are in the read_opcode state. We use 
 		-- the current value of the program data as the opcode that controls the function of 
 		-- the ALU. If we are in the read_opcode state and we receive an interrupt request, the 
@@ -1153,7 +1163,7 @@ begin
 			alu_cin  <= false;
 			alu_ctrl <= alu_cmd_and;
 			
-			case opcode_now is
+			case to_integer(unsigned(prog_data)) is
 			
 			-- Eight-bit register increment and decrement.
 			when inc_A | dec_A =>
