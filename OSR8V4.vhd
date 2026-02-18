@@ -52,7 +52,8 @@
 -- adjustments and re-compilations on an A3041 platform. Stable and robust.
 
 -- V4.2, [18-FEB-26] Start new version. Want to introduce an Interrupt Service
--- (ISRV) flag.
+-- (ISRV) flag, but in doing so, discover instability. Introduce a signal
+-- opcode_saved.
 
 library ieee;  
 use ieee.std_logic_1164.all;
@@ -279,8 +280,23 @@ architecture behavior of OSR8_CPU is
 -- read from the stack and then decrement the stack pointer.
 	signal reg_SP : std_logic_vector(ca_top downto 0);
 -- State variables and registers for the CPU and its ALU.
-	signal saved_opcode : integer range 0 to 127;
+	signal opcode_saved : integer range 0 to 127;
 	
+-- The state of the CPU.
+	signal state : integer range 0 to 15;
+	
+-- The state values. We use single-bit values to simplify the state
+-- machine logic. We get faster and more compact logic even though we
+-- use eight bits for the state rather than three.
+	constant read_opcode : integer := 1;
+	constant read_first_operand : integer := 2;
+	constant read_second_operand : integer := 3;
+	constant read_first_byte : integer := 4;
+	constant read_second_byte : integer := 5;
+	constant write_second_byte : integer := 6;
+	constant read_second_opcode : integer := 7;
+	constant incr_pc : integer := 8;
+		
 -- Functions and Procedures	
 	function to_std_logic (v: boolean) return std_ulogic is
 	begin if v then return('1'); else return('0'); end if; end function;
@@ -289,7 +305,7 @@ begin
 
 -- The Arithmetic Logic Unit provides an eight-bit adder-subtractor with carry 
 -- in and carry out, as well as logical operations AND, OR, and XOR.
-	CPU_ALU : process (all) is
+	ALU : process (all) is
 	variable result : integer range 0 to 511;
 	variable result_vec : std_logic_vector(8 downto 0);
 	variable x_vec : std_logic_vector(8 downto 0);
@@ -391,7 +407,7 @@ begin
 -- Its program memory is separate and private. The CPU instruction set is sufficient 
 -- for all integer arithmetic, register exchanges, recursive subroutines, concurrent 
 -- processes, and efficient block moves. 
-	CPU : process (all) is
+	CPU : process (CK, RESET) is
 	
 		-- The next_r variables we use to set up the value of A that will be asserted 
 		-- on the next rising edge of CK.
@@ -406,22 +422,10 @@ begin
 				
 		-- Variables for the microcode state machine, and constants for the state
 		-- names.
-		variable opcode, opcode_now : integer range 0 to 127;
+		variable opcode : integer range 0 to 127;
 		variable first_operand, second_operand : integer range 0 to 255;
-		variable state, next_state : integer range 0 to 255;
+		variable next_state : integer range 0 to 15;
 		
-		-- The state values. We use single-bit values to simplify the state
-		-- machine logic. We get faster and more compact logic even though we
-		-- use eight bits for the state rather than three.
-		constant read_opcode : integer := 1;
-		constant read_first_operand : integer := 2;
-		constant read_second_operand : integer := 4;
-		constant read_first_byte : integer := 8;
-		constant read_second_byte : integer := 16;
-		constant write_second_byte : integer := 32;
-		constant read_second_opcode : integer := 64;
-		constant incr_pc : integer := 128;
-			
 		-- We have next_pc to set up the next program counter value.
 		variable next_pc : std_logic_vector(pa_top downto 0);
 		
@@ -435,10 +439,10 @@ begin
 
 		-- Reset the cpu state and program counter until we enter standby mode.
 		if (RESET ='1') then 
-			state := read_opcode;
+			state <= read_opcode;
 			prog_cntr <= std_logic_vector(to_unsigned(start_pc,prog_cntr_len)); 
 			opcode := nop;
-			saved_opcode <= nop;
+			opcode_saved <= nop;
 			reg_SP <= (others => '0'); 
 			flag_Z <= false;
 			flag_C <= false;
@@ -489,11 +493,11 @@ begin
 				-- latter condition being indicated by flag_I.
 				if IRQ and (not flag_I) then
 					opcode := sw_int;
-					saved_opcode <= sw_int;
+					opcode_saved <= sw_int;
 					next_SIG(1) := '1';
 				else
 					opcode := to_integer(unsigned(prog_data));
-					saved_opcode <= to_integer(unsigned(prog_data));
+					opcode_saved <= to_integer(unsigned(prog_data));
 				end if;
 				
 				-- Make some signals.
@@ -835,7 +839,7 @@ begin
 			elsif (state = read_first_operand) then
 				first_operand := to_integer(unsigned(prog_data));
 				
-				case saved_opcode is
+				case opcode_saved is
 				
 				-- We load a constant into the accumulator. Clock Cycles = 2.
 				when ld_A_n => 
@@ -876,7 +880,7 @@ begin
 			elsif (state = read_second_operand) then
 				second_operand := to_integer(unsigned(prog_data));
 				
-				case saved_opcode is 
+				case opcode_saved is 
 				
 				-- Indirect eight-bit read operations using operands as address. The first
 				-- operand, being the one we loaded from a lower address, is the HI byte
@@ -948,13 +952,13 @@ begin
 				-- value. Clock Cycles = 3.
 				when jp_nn | jp_z_nn | jp_nz_nn | jp_c_nn | jp_nc_nn | jp_p_nn | jp_np_nn =>
 					next_SIG(2) := '1';
-					if (saved_opcode = jp_nn) or 
-						((saved_opcode = jp_z_nn) and flag_Z) or
-						((saved_opcode = jp_nz_nn) and (not flag_Z)) or
-						((saved_opcode = jp_c_nn) and flag_C) or
-						((saved_opcode = jp_nc_nn) and (not flag_C)) or
-						((saved_opcode = jp_p_nn) and (not flag_S)) or
-						((saved_opcode = jp_np_nn) and flag_S) then
+					if (opcode_saved = jp_nn) or 
+						((opcode_saved = jp_z_nn) and flag_Z) or
+						((opcode_saved = jp_nz_nn) and (not flag_Z)) or
+						((opcode_saved = jp_c_nn) and flag_C) or
+						((opcode_saved = jp_nc_nn) and (not flag_C)) or
+						((opcode_saved = jp_p_nn) and (not flag_S)) or
+						((opcode_saved = jp_np_nn) and flag_S) then
 						next_SIG(3) := '1';
 						next_pc(pa_top downto 8) := 
 							std_logic_vector(to_unsigned(first_operand,prog_cntr_len-8));
@@ -974,7 +978,7 @@ begin
 			-- or a stack access. We never increment the program counter from this state because
 			-- we have already obtained the full instruction.
 			elsif (state = read_first_byte) then			
-				case saved_opcode is
+				case opcode_saved is
 				
 				-- By now, the address lines have selected the target location, and half-way
 				-- through this clock cycle, the target byte will be driven onto the data
@@ -989,7 +993,7 @@ begin
 				-- through this cycle it will appear on the data bus. We store it in the
 				-- destination register on the next rising edge of the clock. 
 				when pop_A | pop_B | pop_C | pop_D | pop_E | pop_H | pop_L | pop_F =>
-					case saved_opcode is
+					case opcode_saved is
 						when pop_A => next_A := to_integer(unsigned(cpu_data_in));
 						when pop_B => next_B := to_integer(unsigned(cpu_data_in));
 						when pop_C => next_C := to_integer(unsigned(cpu_data_in));
@@ -1014,7 +1018,7 @@ begin
 					cpu_addr <= reg_SP;
 					WR <= false;
 					DS <= true;
-					case saved_opcode is
+					case opcode_saved is
 						when pop_IX => next_IX(7 downto 0) := cpu_data_in(7 downto 0);
 						when pop_IY => next_IY(7 downto 0) := cpu_data_in(7 downto 0);
 						when others => null;
@@ -1042,7 +1046,7 @@ begin
 			-- this state, but we will set it to a the value popped off the stack by a
 			-- return instruction.
 			elsif (state = read_second_byte) then
-				case saved_opcode is
+				case opcode_saved is
 				
 				-- Read the HI byte of index pointer from the stack.
 				when pop_IX => 
@@ -1065,7 +1069,7 @@ begin
 				when ret_cll | ret_int =>
 					next_pc(pa_top downto 8) := cpu_data_in(pa_top-8 downto 0);
 					next_pc(7 downto 0) := prog_cntr(7 downto 0);	
-					if saved_opcode = ret_cll then
+					if opcode_saved = ret_cll then
 						next_state := incr_pc;
 					else 
 						next_flag_I := false;
@@ -1084,7 +1088,7 @@ begin
 			-- specified by the two operands in a call instruction, having saved the previous
 			-- program counter to the stack.
 			elsif (state = write_second_byte) then
-				case saved_opcode is
+				case opcode_saved is
 				
 				-- We increment the stack pointer and write the LO byte of the index 
 				-- pointers to the stack, having already pushed the HI byte to the
@@ -1094,7 +1098,7 @@ begin
 					cpu_addr <= std_logic_vector(unsigned(reg_SP)+1);
 					WR <= true;
 					DS <= true;
-					case saved_opcode is
+					case opcode_saved is
 						when push_IX => cpu_data_out(7 downto 0) <= reg_IX(7 downto 0);
 						when push_IY => cpu_data_out(7 downto 0) <= reg_IY(7 downto 0);
 						when others => null;
@@ -1112,7 +1116,7 @@ begin
 					WR <= true;
 					DS <= true;
 					cpu_data_out <= prog_cntr(7 downto 0);
-					if (saved_opcode = call_nn) then
+					if (opcode_saved = call_nn) then
 						next_pc(pa_top downto 8) := 
 							std_logic_vector(to_unsigned(first_operand,prog_cntr_len-8));
 						next_pc(7 downto 0) := 
@@ -1141,7 +1145,7 @@ begin
 			
 			-- Assert the new state, program counter, and register values for the next clock cycle.
 			prog_cntr <= next_pc; 
-			state := next_state;					
+			state <= next_state;					
 			reg_A <= next_A;
 			reg_B <= next_B;
 			reg_C <= next_C;
@@ -1158,19 +1162,27 @@ begin
 			flag_I <= next_flag_I;
 			SIG <= next_SIG;
 		end if;
-				-- Here we have combinatorial logic that applies the Arithmetic Logic Unit to eight-bit 
-		-- registers and constants. One of the two inputs to the ALU is always the accumulator,
-		-- which we name reg_A in the code. We use the ALU to increment and decrement registers
-		-- as well as add, subtract, shift, rotate, and combine them logically. We begin with 
-		-- the behavior of the ALU when we are in the read_opcode state. We use the current 
-		-- value of the program data as the opcode that controls the function of the ALU.
+	end process;
+
+	-- Here we have combinatorial logic that applies the Arithmetic Logic Unit to eight-bit 
+	-- registers and constants. One of the two inputs to the ALU is always the accumulator,
+	-- which we name reg_A in the code. We use the ALU to increment and decrement registers
+	-- as well as add, subtract, shift, rotate, and combine them logically. We begin with 
+	-- the behavior of the ALU when we are in the read_opcode state. We use the current 
+	-- value of the program data as the opcode that controls the function of the ALU.
+	MUX : process (all) is
+		variable opcode_now : integer range 0 to 127;
+		variable data_now : integer range 0 to 255;
+
+	begin		opcode_now := to_integer(unsigned(prog_data));
+		data_now := to_integer(unsigned(prog_data));
+		
 		if (state = read_opcode) then
 		
 			alu_in_x <= reg_A;
 			alu_in_y <= reg_B;
 			alu_cin  <= false;
 			alu_ctrl <= alu_cmd_and;
-			opcode_now := to_integer(unsigned(prog_data));
 			
 			case opcode_now is
 			
@@ -1238,7 +1250,7 @@ begin
 				alu_in_x <= reg_A;
 				alu_in_y <= reg_B;
 				alu_cin <= flag_C;
-				case to_integer(unsigned(prog_data)) is 
+				case opcode_now is 
 					when rl_A  => alu_ctrl <= alu_cmd_rl;
 					when rlc_A => alu_ctrl <= alu_cmd_rlc;
 					when rr_A  => alu_ctrl <= alu_cmd_rr;
@@ -1255,7 +1267,7 @@ begin
 			
 			end case;
 			
-		-- If we are not in the read_opcode state, we have a signal "saved_opcode" that 
+		-- If we are not in the read_opcode state, we have a signal "opcode_saved" that 
 		-- holds the value of the opcode that was presented in the most recent read_opcode 
 		-- state. We use this variable to control the behavior of the ALU. The operand we are 
 		-- going to use for the Y-input of the ALU will always be the current value of the
@@ -1268,14 +1280,13 @@ begin
 			alu_cin  <= false;
 			alu_ctrl <= alu_cmd_and;
 
-			case saved_opcode is 
-			
+			case opcode_saved is 			
 			-- Operations with A and a constant.
 			when add_A_n | sub_A_n | adc_A_n | sbc_A_n =>
 				alu_in_x <= reg_A;
-				alu_in_y <= to_integer(unsigned(prog_data));
-				alu_cin <= flag_C and ((opcode = adc_A_n) or (opcode = sbc_A_n));
-				if (opcode = add_A_n) or (opcode = adc_A_n) then
+				alu_in_y <= data_now;
+				alu_cin <= flag_C and ((opcode_saved = adc_A_n) or (opcode_saved = sbc_A_n));
+				if (opcode_saved = add_A_n) or (opcode_saved = adc_A_n) then
 					alu_ctrl <= alu_cmd_add;
 				else 
 					alu_ctrl <= alu_cmd_sub;
@@ -1285,15 +1296,15 @@ begin
 			-- because it reduces our logic footprint.
 			when and_A_n =>
 				alu_in_x <= reg_A;
-				alu_in_y <= to_integer(unsigned(prog_data));
+				alu_in_y <= data_now;
 				alu_ctrl <= alu_cmd_and;
 			when or_A_n =>
 				alu_in_x <= reg_A;
-				alu_in_y <= to_integer(unsigned(prog_data));
+				alu_in_y <= data_now;
 				alu_ctrl <= alu_cmd_or;
 			when xor_A_n =>
 				alu_in_x <= reg_A;
-				alu_in_y <= to_integer(unsigned(prog_data));
+				alu_in_y <= data_now;
 				alu_ctrl <= alu_cmd_xor;
 				
 			-- In all other cases, allow defaults to stand.
