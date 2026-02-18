@@ -16,9 +16,7 @@
 -- along with this program; if not, write to the Free Software
 -- Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
--- Version 4: Developed for the A3054 Intraperitoneal Transmitter
-
--- [10-FEB-26] Eliminate the intermediate variable prog_cntr, change all
+-- V4.1, [10-FEB-26] Eliminate the intermediate variable prog_cntr, change all
 -- occurances of prog_addr to prog_cntr. These changes are cosmetic only,
 -- but also have the effect of making the OSR8V4 incompatible with a port
 -- interface created for the OSR8V3.
@@ -52,6 +50,9 @@
 -- any jump that occurs, and any constant addition or subtraction from register
 -- A, but not an addition or subtraction of register B. Subject to multiple
 -- adjustments and re-compilations on an A3041 platform. Stable and robust.
+
+-- V4.2, [18-FEB-26] Start new version. Want to introduce an Interrupt Service
+-- (ISRV) flag.
 
 library ieee;  
 use ieee.std_logic_1164.all;
