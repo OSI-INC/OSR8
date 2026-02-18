@@ -1251,6 +1251,7 @@ begin
 			when add_A_n | sub_A_n | adc_A_n | sbc_A_n =>
 				alu_in_x <= reg_A;
 				alu_in_y <= to_integer(unsigned(prog_data));
+				alu_cin <= flag_C and ((opcode = adc_A_n) or (opcode = sbc_A_n));
 				if (opcode = add_A_n) or (opcode = adc_A_n) then
 					alu_ctrl <= alu_cmd_add;
 				else 
