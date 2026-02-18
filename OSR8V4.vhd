@@ -46,6 +46,13 @@
 -- inc A, push A, pop E, pop A". We eliminate these instructions and the code 
 -- shrinks by 100 LUTs, and now fits in the P3041.
 
+-- [18-FEB-26] Restore missing C-Flag definition. Assign values to the SIG
+-- signals: read opcode flag, executing interrupt flag, jump instruction flag,
+-- and a combined flag that shows any increment or decrement of a register,
+-- any jump that occurs, and any constant addition or subtraction from register
+-- A, but not an addition or subtraction of register B. Subject to multiple
+-- adjustments and re-compilations on an A3041 platform. Stable and robust.
+
 library ieee;  
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
@@ -459,7 +466,11 @@ begin
 			next_flag_I := flag_I;
 			WR <= false;
 			DS <= false;
-			next_SIG := (others => '0');
+			next_SIG(0) := '0';    -- Read opcode signal.
+			next_SIG(1) := SIG(1); -- Executing interrupt signal.
+			next_SIG(2) := '0';    -- Jump instruction.
+			next_SIG(3) := '0';    -- Jump occurs, any decrement or increment.
+			
 			
 			-- Read the first byte of the instruction. If the instruction operates only 
 			-- upon register, with no constants involved, it will execute here in one state. 
@@ -468,8 +479,6 @@ begin
 			-- instead of the instruction pointed to by the program counter.
 			if (state = read_opcode) then
 					
-				next_SIG(0) := '1';	
-				
 				-- We override the opcode provided by the program data when we have an
 				-- interrupt request and we are not currently servicing an interrupt, this
 				-- latter condition being indicated by flag_I.
@@ -480,6 +489,19 @@ begin
 					opcode := to_integer(unsigned(prog_data));
 				end if;			
 				
+				-- Make some signals.
+				next_SIG(0) := '1';	
+				if (opcode = dec_A) or (opcode = dec_B) 
+					or (opcode = dec_C) or (opcode = dec_D)
+					or (opcode = inc_A) or (opcode = inc_B) 
+					or (opcode = inc_C) or (opcode = inc_D)
+					or (opcode = inc_IX) or (opcode = inc_IY) 
+					or (opcode = dec_IX) or (opcode = dec_IY)
+					or (opcode = add_A_n) or (opcode = adc_A_n)
+					or (opcode = sub_A_n) or (opcode = sbc_A_n) then
+					next_SIG(3) := '1';
+				end if;
+					
 				-- Decode the instruction.
 				case opcode is
 				
@@ -1040,7 +1062,7 @@ begin
 						next_state := incr_pc;
 					else 
 						next_flag_I := false;
-						next_SIG(1) := '1';
+						next_SIG(1) := '0';
 						next_state := read_opcode;
 					end if;
 				

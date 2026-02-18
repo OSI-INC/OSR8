@@ -13,14 +13,21 @@ nothing deliberate that will render the code incompatible with an existing proje
 The OSR8V1 and OSR8V2 versions are obsolete. The currently-supported version are
 OSR8V3 and OSR8V4.
 
-- OSR8V3: Introduced in 2022, stable and in continuous use through 2025. No known
-bugs. Generic constants for address lengths allow deployment in a wide range
-of sizes. The 4-KByte program memory, 2-KByte user memory version takes up
-800 LUTs in a MachXO2. While this version is running active code, an average of 
-150 gates transition on every clock edge.
+- OSR8V3: Finalized 18-JUN-22. Deployed in hundreds of implantable devices and
+motherboards. The processor source file does not provide complete constraints for 
+all signals and variables. Although the OSR8V3 contains no known bugs, it is hard
+to work with because any error in our peripheral logic code combines with the
+incomplete constraints of the OSR8V3 to produce erratice behavior. This behavior
+often gives very little clue as to which parts of our peripheral logic are going
+wrong. A fully-constrained version of the OSR8V3 was too large to fit in the 
+1280-LUT logic chip we use for our implants along with all the peripheral logic
+required by the implant functions, so we relaxed the OSR8V3 constraints, which 
+reduced its size. We recommend against using the OSR8V3 in new projects. Later
+versions are fully-constrained, after removing eight instructions we never used
+in any of our applications.
 
-- OSR8V4: Started in 2026. Renamed prog_addr as prog_cntr in the port map, after
-removing prog_addr from the OSR8 body. This change requires accommodation in
-the main program, so the OSR8V4 is not backward-compatible with OSR8V3. We are
-planning addition of an interrupt execution flag to support automatic clock boost 
-during interrupt service routines. No known bugs.
+- OSR8V4: Initialized on 10-FEB-26. Requires renaming prog_addr to prog_cntr in 
+the port map when moving from OSR8V3 to OSR8V4. Removed eight instructions from
+the OSR8V3 in order reduce the size of the compiled code. Added complete
+constraints to all variables and signals so as to make behavior less erratic in
+the presence of bugs in peripheral logic.
