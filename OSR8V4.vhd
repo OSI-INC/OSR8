@@ -55,7 +55,12 @@
 -- state for the CPU. Separate the ALU input multiplexer into its own process.
 -- find and fix bugs in the MUX from use of different copies of opcode. Add
 -- Interrupt Service (ISRV) flag that indicates the CPU is servicing an
--- interrupt.
+-- interrupt. 
+
+-- [19-FEB-26] Remove integer types from ALU, CPU, and MUX. Use unsigned and
+-- logic vectors for opcodes and registers. Simplify the expressions for the
+-- ALU operations and use unsigned math explicitly to obtain modular behavior.
+-- These changes save 30 LUTs. The P3041 code is now 1201 LUTs.
 
 library ieee;  
 use ieee.std_logic_1164.all;
