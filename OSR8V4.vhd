@@ -238,33 +238,35 @@ constant srl_A    : opcode_type := "1111110"; -- 7E srl A
 	subtype alu_result_type is unsigned(8 downto 0);
 	subtype alu_ctrl_type is unsigned(3 downto 0);
 	
--- Arithmetic Logic Unit signals and constants
+-- ALU inputs and control codes.
 	signal alu_in_x, alu_in_y : cpu_reg_type;
-	signal alu_cin, alu_cout : boolean;
+	signal alu_cin : boolean;
 	signal alu_ctrl : alu_ctrl_type;
 	constant alu_cmd_add  : alu_ctrl_type := "0000"; -- Add X and Y
 	constant alu_cmd_sub  : alu_ctrl_type := "0001"; -- Subtract Y from X
-	constant alu_cmd_and  : alu_ctrl_type := "0010"; -- Bitwise AND of X and Y
-	constant alu_cmd_xor  : alu_ctrl_type := "0011"; -- Bitwise XOR of X and Y
-	constant alu_cmd_or   : alu_ctrl_type := "0100"; -- Bitwise OR of X and Y
-	constant alu_cmd_rl   : alu_ctrl_type := "0101"; -- Rotate Left of X
-	constant alu_cmd_rlc  : alu_ctrl_type := "0110"; -- Rotate Left Circuiar of X
-	constant alu_cmd_rr   : alu_ctrl_type := "0111"; -- Rotate Right of X
-	constant alu_cmd_rrc  : alu_ctrl_type := "1000"; -- Rotate Right Circular of X
-	constant alu_cmd_sla  : alu_ctrl_type := "1001"; -- Shift Left Arithmetic of X
-	constant alu_cmd_sra  : alu_ctrl_type := "1010"; -- Shift Right Arithmetic of X
-	constant alu_cmd_srl  : alu_ctrl_type := "1011"; -- Shift Right Logical of X
+	constant alu_cmd_and  : alu_ctrl_type := "0100"; -- Bitwise AND of X and Y
+	constant alu_cmd_xor  : alu_ctrl_type := "0101"; -- Bitwise XOR of X and Y
+	constant alu_cmd_or   : alu_ctrl_type := "0110"; -- Bitwise OR of X and Y
+	constant alu_cmd_rl   : alu_ctrl_type := "1000"; -- Rotate Left of X
+	constant alu_cmd_rlc  : alu_ctrl_type := "1001"; -- Rotate Left Circuiar of X
+	constant alu_cmd_sla  : alu_ctrl_type := "1010"; -- Shift Left Arithmetic of X
+	constant alu_cmd_rr   : alu_ctrl_type := "1100"; -- Rotate Right of X
+	constant alu_cmd_rrc  : alu_ctrl_type := "1101"; -- Rotate Right Circular of X
+	constant alu_cmd_sra  : alu_ctrl_type := "1110"; -- Shift Right Arithmetic of X
+	constant alu_cmd_srl  : alu_ctrl_type := "1111"; -- Shift Right Logical of X
+	
+-- ALU Outputs. We must force the compiler to keep the main alu output signal.-- If we allow the compiler to merge the output with the CPU and MUX, the-- OSR8 code swells by roughly one sixth in size. We do not force it to keep
+-- the carry output, however, because we have seen no decrease in size from
+-- doing so.
 	signal alu_out : cpu_reg_type;
+	signal alu_cout : boolean;
 	attribute syn_keep of alu_out : signal is true;
 	attribute nomerge of alu_out : signal is "";	
 
-
--- CPU Registers
-
--- The Accumulator, or Register A, in which we get the result of eight-bit
--- arithmetic operations, logical operations, and shifts and rotations. 
--- When such an operation requires a second operand, we can use either 
--- Register B or a one-byte constant.
+-- CPU Registers. The Accumulator, or Register A, in which we get the result 
+-- of eight-bit arithmetic operations, logical operations, and shifts and 
+-- rotations. When such an operation requires a second operand, we can use 
+-- either Register B or a one-byte constant.
 	signal reg_A : cpu_reg_type;
 
 -- Register B will operate with the accumulator for eight-bit operatins that
@@ -321,90 +323,82 @@ constant srl_A    : opcode_type := "1111110"; -- 7E srl A
 
 begin 
 
--- The Arithmetic Logic Unit provides an eight-bit adder-subtractor with carry 
--- in and carry out, as well as logical operations AND, OR, and XOR.
+-- The Arithmetic Logic Unit provides an eight-bit adder-subtractor with 
+-- carry in and carry out, as well as logical operations AND, OR, and XOR.
 	ALU : process (all) is
 	variable result : alu_result_type;
-	variable result_vec : std_logic_vector(8 downto 0);
-	variable x_vec : std_logic_vector(8 downto 0);
 	begin 
-		x_vec(7 downto 0) := std_logic_vector(alu_in_x);
-		x_vec(8) := to_std_logic(alu_cin);
-		
 		result := ('0' & alu_in_x) + ('0' & alu_in_y);
 		
 		case alu_ctrl is
 		
 		-- Add X and Y with Carry
 		when alu_cmd_add =>
-			if alu_cin then result := ('0' & alu_in_x) + ('0' & alu_in_y) + 1;
-			else result := ('0' & alu_in_x) + ('0' & alu_in_y); end if;
+			if alu_cin then 
+				result := ('0' & alu_in_x) + ('0' & alu_in_y) + "000000001";
+			else 
+				result := ('0' & alu_in_x) + ('0' & alu_in_y); 
+			end if;
 			
 		-- Subtract Y from X with Borrow
 		when alu_cmd_sub =>
-			if alu_cin then result := ('0' & alu_in_x) - ('0' & alu_in_y) - 1;
-			else result := ('0' & alu_in_x) - ('0' & alu_in_y); end if;
+			if alu_cin then 
+				result := ('0' & alu_in_x) - ('0' & alu_in_y) - "000000001";
+			else 
+				result := ('0' & alu_in_x) - ('0' & alu_in_y); 
+			end if;
 			
 		-- Bit-Wise Exclusive OR of A and B
 		when alu_cmd_xor =>
-			result := '0' & unsigned(
-					std_logic_vector(alu_in_x) xor std_logic_vector(alu_in_y) );
+			result := '0' & (alu_in_x xor alu_in_y);
 			
 		-- Bit-Wise OR of A and B
 		when alu_cmd_or =>
-			result := '0' & unsigned(
-					std_logic_vector(alu_in_x) or std_logic_vector(alu_in_y) );
+			result := '0' & (alu_in_x or alu_in_y);
 					
 		-- Bit-Wise Logical AND of X and Y
 		when alu_cmd_and =>
-			result := '0' & unsigned(
-					std_logic_vector(alu_in_x) and std_logic_vector(alu_in_y) );
+			result := '0' & (alu_in_x and alu_in_y);
 					
-		 -- Rotate Left of X	
+		-- Rotate Left of X.
 		when alu_cmd_rl  => 
-			result_vec(8 downto 1) := x_vec(7 downto 0);
-			result_vec(0) := x_vec(8);	
-			result := unsigned(result_vec);
+			result(8 downto 1) := alu_in_x(7 downto 0);
+			result(0) := to_std_logic(alu_cin);	
 			
 		 -- Rotate Left Circuiar of X
 		when alu_cmd_rlc => 
-			result_vec(7 downto 1) := x_vec(6 downto 0);
-			result_vec(0) := x_vec(7);	
-			result_vec(8) := x_vec(7);
-			result := unsigned(result_vec);
+			result(7 downto 1) := alu_in_x(6 downto 0);
+			result(0) := alu_in_x(7);	
+			result(8) := alu_in_x(7);
 			
 		-- Rotate Right of X
-		when alu_cmd_rr  =>  
-			result_vec(7 downto 0) := x_vec(8 downto 1);
-			result_vec(8) := x_vec(0);		
-			result := unsigned(result_vec);
+		when alu_cmd_rr  =>
+			result(7) := to_std_logic(alu_cin);
+			result(6 downto 0) := alu_in_x(7 downto 1);
+			result(8) := alu_in_x(0);		
 			
 		-- Rotate Right Circular of X
 		when alu_cmd_rrc =>  
-			result_vec(6 downto 0) := x_vec(7 downto 1);
-			result_vec(7) := x_vec(0);		
-			result_vec(8) := x_vec(0);		
-			result := unsigned(result_vec);
+			result(6 downto 0) := alu_in_x(7 downto 1);
+			result(7) := alu_in_x(0);		
+			result(8) := alu_in_x(0);		
 			
 		-- Shift Left Arithmetic of X
 		when alu_cmd_sla =>  
-			result_vec(8 downto 1) := x_vec(7 downto 0);
-			result_vec(0) :='0';	
-			result := unsigned(result_vec);
+			result(8 downto 1) := alu_in_x(7 downto 0);
+			result(0) :='0';	
 			
 		-- Shift Right Arithmetic of X
 		when alu_cmd_sra =>  
-			result_vec(6 downto 0) := x_vec(7 downto 1);
-			result_vec(7) := x_vec(7);		
-			result_vec(8) := x_vec(0);		
-			result := unsigned(result_vec);
+			result(6 downto 0) := alu_in_x(7 downto 1);
+			result(7) := alu_in_x(7);		
+			result(8) := alu_in_x(0);		
 			
 		-- Shift Right Logical of X
 		when alu_cmd_srl => 
-			result_vec(6 downto 0) := x_vec(7 downto 1);
-			result_vec(7) := '0';		
-			result_vec(8) := x_vec(0);		
-			result := unsigned(result_vec);
+			result(6 downto 0) := alu_in_x(7 downto 1);
+			result(7) := '0';		
+			result(8) := alu_in_x(0);		
 
 		-- Let the default values stand.
 		when others =>
@@ -412,7 +406,7 @@ begin
 			
 		end case;
 		
-		alu_out <= unsigned(result(7 downto 0));
+		alu_out <= result(7 downto 0);
 		alu_cout <= (result(8) = '1');
 	end process;
 
