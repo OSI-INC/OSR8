@@ -113,13 +113,13 @@ entity OSR8_CPU is
 		SIG : out std_logic_vector(3 downto 0); -- Signals for Debugging
 		RESET : in std_logic; -- Hard Reset
 		CK : in std_logic); -- The clock, duty cycle 50%.
+end;
+
+architecture behavior of OSR8_CPU is 
 
 -- Program location constants in bytes.
 	constant pa_top : integer := prog_cntr_len-1;
 	constant ca_top : integer := cpu_addr_len-1;
-end;
-
-architecture behavior of OSR8_CPU is 
 
 -- Definition of operation codes. We have the constant name we will be using
 -- in the VHDL definition of the CPU to refer to an operation, followed by 
@@ -132,128 +132,129 @@ architecture behavior of OSR8_CPU is
 -- "ld" for "load", and so on. Our syntax for assembler code follows that
 -- of the venerable Z80 microprocessors.
 
-	subtype opcode_t is unsigned(6 downto 0);
+subtype opcode_type is std_logic_vector(6 downto 0);
+	
+constant nop      : opcode_type := "0000000"; -- 00 nop
+constant jp_nn    : opcode_type := "0000001"; -- 01 jp nn
+constant jp_nz_nn : opcode_type := "0000010"; -- 02 jp nz,nn
+constant jp_z_nn  : opcode_type := "0000011"; -- 03 jp z,nn
+constant jp_nc_nn : opcode_type := "0000100"; -- 04 jp nc,nn
+constant jp_c_nn  : opcode_type := "0000101"; -- 05 jp c,nn
+constant jp_np_nn : opcode_type := "0000110"; -- 06 jp np,nn
+constant jp_p_nn  : opcode_type := "0000111"; -- 07 jp p,nn
+constant call_nn  : opcode_type := "0001000"; -- 08 call nn
+constant sw_int   : opcode_type := "0001001"; -- 09 int
+constant ret_cll  : opcode_type := "0001010"; -- 0A ret
+constant ret_int  : opcode_type := "0001011"; -- 0B rti
+constant cpu_wt   : opcode_type := "0001100"; -- 0C wait
+constant clr_iflg : opcode_type := "0001101"; -- 0D clri
+constant set_iflg : opcode_type := "0001110"; -- 0E seti
 
-	constant nop      : opcode_t := to_unsigned(16#00#,7); -- nop
-	constant jp_nn    : opcode_t := to_unsigned(16#01#,7); -- jp nn
-	constant jp_nz_nn : opcode_t := to_unsigned(16#02#,7); -- jp nz,nn
-	constant jp_z_nn  : opcode_t := to_unsigned(16#03#,7); -- jp z,nn
-	constant jp_nc_nn : opcode_t := to_unsigned(16#04#,7); -- jp nc,nn
-	constant jp_c_nn  : opcode_t := to_unsigned(16#05#,7); -- jp c,nn
-	constant jp_np_nn : opcode_t := to_unsigned(16#06#,7); -- jp np,nn
-	constant jp_p_nn  : opcode_t := to_unsigned(16#07#,7); -- jp p,nn
-	constant call_nn  : opcode_t := to_unsigned(16#08#,7); -- call nn
-	constant sw_int   : opcode_t := to_unsigned(16#09#,7); -- int
-	constant ret_cll  : opcode_t := to_unsigned(16#0A#,7); -- ret
-	constant ret_int  : opcode_t := to_unsigned(16#0B#,7); -- rti
-	constant cpu_wt   : opcode_t := to_unsigned(16#0C#,7); -- wait
-	constant clr_iflg : opcode_t := to_unsigned(16#0D#,7); -- clri
-	constant set_iflg : opcode_t := to_unsigned(16#0E#,7); -- seti
-	
-	constant ld_A_n   : opcode_t := to_unsigned(16#10#,7); -- ld A,n
-	constant ld_IX_nn : opcode_t := to_unsigned(16#11#,7); -- ld IX,nn
-	constant ld_IY_nn : opcode_t := to_unsigned(16#12#,7); -- ld IY,nn
-	constant ld_HL_nn : opcode_t := to_unsigned(16#13#,7); -- ld HL,nn
-	constant ld_A_mm  : opcode_t := to_unsigned(16#14#,7); -- ld A,(nn)
-	constant ld_mm_A  : opcode_t := to_unsigned(16#15#,7); -- ld (nn),A
-	constant ld_A_ix  : opcode_t := to_unsigned(16#16#,7); -- ld A,(IX)
-	constant ld_A_iy  : opcode_t := to_unsigned(16#17#,7); -- ld A,(IY)
-	constant ld_ix_A  : opcode_t := to_unsigned(16#18#,7); -- ld (IX),A
-	constant ld_iy_A  : opcode_t := to_unsigned(16#19#,7); -- ld (IY),A
-	constant ld_HL_SP : opcode_t := to_unsigned(16#1A#,7); -- ld HL,SP
-	constant ld_SP_HL : opcode_t := to_unsigned(16#1B#,7); -- ld SP,HL
-	constant ld_HL_PC : opcode_t := to_unsigned(16#1C#,7); -- ld HL,PC
-	constant ld_PC_HL : opcode_t := to_unsigned(16#1D#,7); -- ld PC,HL	
-			
-	constant push_A   : opcode_t := to_unsigned(16#20#,7); -- push A
-	constant push_B   : opcode_t := to_unsigned(16#21#,7); -- push B
-	constant push_C   : opcode_t := to_unsigned(16#22#,7); -- push C
-	constant push_D   : opcode_t := to_unsigned(16#23#,7); -- push D
-	constant push_E   : opcode_t := to_unsigned(16#24#,7); -- push E
-	constant push_H   : opcode_t := to_unsigned(16#25#,7); -- push H
-	constant push_L   : opcode_t := to_unsigned(16#26#,7); -- push L
-	constant push_F   : opcode_t := to_unsigned(16#27#,7); -- push F
-	constant push_IX  : opcode_t := to_unsigned(16#28#,7); -- push IX
-	constant push_IY  : opcode_t := to_unsigned(16#29#,7); -- push IY
-	
-	constant pop_A    : opcode_t := to_unsigned(16#30#,7); -- pop A
-	constant pop_B    : opcode_t := to_unsigned(16#31#,7); -- pop B
-	constant pop_C    : opcode_t := to_unsigned(16#32#,7); -- pop C
-	constant pop_D    : opcode_t := to_unsigned(16#33#,7); -- pop D
-	constant pop_E    : opcode_t := to_unsigned(16#34#,7); -- pop E
-	constant pop_H    : opcode_t := to_unsigned(16#35#,7); -- pop H
-	constant pop_L    : opcode_t := to_unsigned(16#36#,7); -- pop L
-	constant pop_F    : opcode_t := to_unsigned(16#37#,7); -- pop F
-	constant pop_IX   : opcode_t := to_unsigned(16#38#,7); -- pop IX
-	constant pop_IY   : opcode_t := to_unsigned(16#39#,7); -- pop IY
+constant ld_A_n   : opcode_type := "0010000"; -- 10 ld A,n
+constant ld_IX_nn : opcode_type := "0010001"; -- 11 ld IX,nn
+constant ld_IY_nn : opcode_type := "0010010"; -- 12 ld IY,nn
+constant ld_HL_nn : opcode_type := "0010011"; -- 13 ld HL,nn
+constant ld_A_mm  : opcode_type := "0010100"; -- 14 ld A,(nn)
+constant ld_mm_A  : opcode_type := "0010101"; -- 15 ld (nn),A
+constant ld_A_ix  : opcode_type := "0010110"; -- 16 ld A,(IX)
+constant ld_A_iy  : opcode_type := "0010111"; -- 17 ld A,(IY)
+constant ld_ix_A  : opcode_type := "0011000"; -- 18 ld (IX),A
+constant ld_iy_A  : opcode_type := "0011001"; -- 19 ld (IY),A
+constant ld_HL_SP : opcode_type := "0011010"; -- 1A ld HL,SP
+constant ld_SP_HL : opcode_type := "0011011"; -- 1B ld SP,HL
+constant ld_HL_PC : opcode_type := "0011100"; -- 1C ld HL,PC
+constant ld_PC_HL : opcode_type := "0011101"; -- 1D ld PC,HL
 
-	constant add_A_B  : opcode_t := to_unsigned(16#40#,7); -- add A,B
-	constant add_A_n  : opcode_t := to_unsigned(16#41#,7); -- add A,n
-	constant adc_A_B  : opcode_t := to_unsigned(16#42#,7); -- adc A,B
-	constant adc_A_n  : opcode_t := to_unsigned(16#43#,7); -- adc A,n
-	constant sub_A_B  : opcode_t := to_unsigned(16#44#,7); -- sub A,B
-	constant sub_A_n  : opcode_t := to_unsigned(16#45#,7); -- sub A,n
-	constant sbc_A_B  : opcode_t := to_unsigned(16#46#,7); -- sbc A,B
-	constant sbc_A_n  : opcode_t := to_unsigned(16#47#,7); -- sbc A,n
-	constant clr_aflg : opcode_t := to_unsigned(16#4F#,7); -- clrf
-	
-	constant inc_A    : opcode_t := to_unsigned(16#50#,7); -- inc A
-	constant inc_B    : opcode_t := to_unsigned(16#51#,7); -- inc B
-	constant inc_C    : opcode_t := to_unsigned(16#52#,7); -- inc C
-	constant inc_D    : opcode_t := to_unsigned(16#53#,7); -- inc D
-	constant inc_IX   : opcode_t := to_unsigned(16#59#,7); -- inc IX
-	constant inc_IY   : opcode_t := to_unsigned(16#5A#,7); -- inc IY
+constant push_A   : opcode_type := "0100000"; -- 20 push A
+constant push_B   : opcode_type := "0100001"; -- 21 push B
+constant push_C   : opcode_type := "0100010"; -- 22 push C
+constant push_D   : opcode_type := "0100011"; -- 23 push D
+constant push_E   : opcode_type := "0100100"; -- 24 push E
+constant push_H   : opcode_type := "0100101"; -- 25 push H
+constant push_L   : opcode_type := "0100110"; -- 26 push L
+constant push_F   : opcode_type := "0100111"; -- 27 push F
+constant push_IX  : opcode_type := "0101000"; -- 28 push IX
+constant push_IY  : opcode_type := "0101001"; -- 29 push IY
 
-	constant dec_A    : opcode_t := to_unsigned(16#60#,7); -- dec A
-	constant dec_B    : opcode_t := to_unsigned(16#61#,7); -- dec B
-	constant dec_C    : opcode_t := to_unsigned(16#62#,7); -- dec C
-	constant dec_D    : opcode_t := to_unsigned(16#63#,7); -- dec D
-	constant dly_A    : opcode_t := to_unsigned(16#67#,7); -- dly A
-	constant dec_IX   : opcode_t := to_unsigned(16#69#,7); -- dec IX
-	constant dec_IY   : opcode_t := to_unsigned(16#6A#,7); -- dec IY
-	
-	constant and_A_B  : opcode_t := to_unsigned(16#70#,7); -- and A,B
-	constant and_A_n  : opcode_t := to_unsigned(16#71#,7); -- and A,n
-	constant or_A_B   : opcode_t := to_unsigned(16#72#,7); -- or A,B
-	constant or_A_n   : opcode_t := to_unsigned(16#73#,7); -- or A,n
-	constant xor_A_B  : opcode_t := to_unsigned(16#74#,7); -- xor A,B
-	constant xor_A_n  : opcode_t := to_unsigned(16#75#,7); -- xor A,n
-	
-	constant rl_A     : opcode_t := to_unsigned(16#78#,7); -- rl A
-	constant rlc_A    : opcode_t := to_unsigned(16#79#,7); -- rlc A
-	constant rr_A     : opcode_t := to_unsigned(16#7A#,7); -- rr A
-	constant rrc_A    : opcode_t := to_unsigned(16#7B#,7); -- rrc A
-	constant sla_A    : opcode_t := to_unsigned(16#7C#,7); -- sla A
-	constant sra_A    : opcode_t := to_unsigned(16#7D#,7); -- sra A
-	constant srl_A    : opcode_t := to_unsigned(16#7E#,7); -- srl A
+constant pop_A    : opcode_type := "0110000"; -- 30 pop A
+constant pop_B    : opcode_type := "0110001"; -- 31 pop B
+constant pop_C    : opcode_type := "0110010"; -- 32 pop C
+constant pop_D    : opcode_type := "0110011"; -- 33 pop D
+constant pop_E    : opcode_type := "0110100"; -- 34 pop E
+constant pop_H    : opcode_type := "0110101"; -- 35 pop H
+constant pop_L    : opcode_type := "0110110"; -- 36 pop L
+constant pop_F    : opcode_type := "0110111"; -- 37 pop F
+constant pop_IX   : opcode_type := "0111000"; -- 38 pop IX
+constant pop_IY   : opcode_type := "0111001"; -- 39 pop IY
+
+constant add_A_B  : opcode_type := "1000000"; -- 40 add A,B
+constant add_A_n  : opcode_type := "1000001"; -- 41 add A,n
+constant adc_A_B  : opcode_type := "1000010"; -- 42 adc A,B
+constant adc_A_n  : opcode_type := "1000011"; -- 43 adc A,n
+constant sub_A_B  : opcode_type := "1000100"; -- 44 sub A,B
+constant sub_A_n  : opcode_type := "1000101"; -- 45 sub A,n
+constant sbc_A_B  : opcode_type := "1000110"; -- 46 sbc A,B
+constant sbc_A_n  : opcode_type := "1000111"; -- 47 sbc A,n
+constant clr_aflg : opcode_type := "1001111"; -- 4F clrf
+
+constant inc_A    : opcode_type := "1010000"; -- 50 inc A
+constant inc_B    : opcode_type := "1010001"; -- 51 inc B
+constant inc_C    : opcode_type := "1010010"; -- 52 inc C
+constant inc_D    : opcode_type := "1010011"; -- 53 inc D
+constant inc_IX   : opcode_type := "1011001"; -- 59 inc IX
+constant inc_IY   : opcode_type := "1011010"; -- 5A inc IY
+
+constant dec_A    : opcode_type := "1100000"; -- 60 dec A
+constant dec_B    : opcode_type := "1100001"; -- 61 dec B
+constant dec_C    : opcode_type := "1100010"; -- 62 dec C
+constant dec_D    : opcode_type := "1100011"; -- 63 dec D
+constant dly_A    : opcode_type := "1100111"; -- 67 dly A
+constant dec_IX   : opcode_type := "1101001"; -- 69 dec IX
+constant dec_IY   : opcode_type := "1101010"; -- 6A dec IY
+
+constant and_A_B  : opcode_type := "1110000"; -- 70 and A,B
+constant and_A_n  : opcode_type := "1110001"; -- 71 and A,n
+constant or_A_B   : opcode_type := "1110010"; -- 72 or A,B
+constant or_A_n   : opcode_type := "1110011"; -- 73 or A,n
+constant xor_A_B  : opcode_type := "1110100"; -- 74 xor A,B
+constant xor_A_n  : opcode_type := "1110101"; -- 75 xor A,n
+
+constant rl_A     : opcode_type := "1111000"; -- 78 rl A
+constant rlc_A    : opcode_type := "1111001"; -- 79 rlc A
+constant rr_A     : opcode_type := "1111010"; -- 7A rr A
+constant rrc_A    : opcode_type := "1111011"; -- 7B rrc A
+constant sla_A    : opcode_type := "1111100"; -- 7C sla A
+constant sra_A    : opcode_type := "1111101"; -- 7D sra A
+constant srl_A    : opcode_type := "1111110"; -- 7E srl A
 	
 -- Attributes to guide the compiler.
 	attribute syn_keep : boolean;
 	attribute nomerge : string;
 
+-- Register types for the CPU, ALU, and MUX.
+	subtype cpu_reg_type is unsigned(7 downto 0);
+	subtype cpu_ca_type is std_logic_vector(ca_top downto 0);
+	subtype cpu_pc_type is std_logic_vector(pa_top downto 0);
+	subtype alu_result_type is unsigned(8 downto 0);
+	subtype alu_ctrl_type is unsigned(3 downto 0);
+	
 -- Arithmetic Logic Unit signals and constants
-	subtype alu_byte_type is integer range 0 to 255;
-	subtype alu_result_type is integer range 0 to 511;
-	subtype alu_ctrl_type is integer range 0 to 15;
-	
-	signal alu_in_x, alu_in_y : alu_byte_type;
+	signal alu_in_x, alu_in_y : cpu_reg_type;
 	signal alu_cin, alu_cout : boolean;
-
 	signal alu_ctrl : alu_ctrl_type;
-	constant alu_cmd_add  : alu_ctrl_type := 0; -- Add X and Y
-	constant alu_cmd_sub  : alu_ctrl_type := 1; -- Subtract Y from X
-	constant alu_cmd_and  : alu_ctrl_type := 2; -- Bitwise AND of X and Y
-	constant alu_cmd_xor  : alu_ctrl_type := 3; -- Bitwise XOR of X and Y
-	constant alu_cmd_or   : alu_ctrl_type := 4; -- Bitwise OR of X and Y
-	constant alu_cmd_rl   : alu_ctrl_type := 5; -- Rotate Left of X
-	constant alu_cmd_rlc  : alu_ctrl_type := 6; -- Rotate Left Circuiar of X
-	constant alu_cmd_rr   : alu_ctrl_type := 7; -- Rotate Right of X
-	constant alu_cmd_rrc  : alu_ctrl_type := 8; -- Rotate Right Circular of X
-	constant alu_cmd_sla  : alu_ctrl_type := 9; -- Shift Left Arithmetic of X
-	constant alu_cmd_sra  : alu_ctrl_type := 10; -- Shift Right Arithmetic of X
-	constant alu_cmd_srl  : alu_ctrl_type := 11; -- Shift Right Logical of X
-	
-	signal alu_out : alu_byte_type;
+	constant alu_cmd_add  : alu_ctrl_type := "0000"; -- Add X and Y
+	constant alu_cmd_sub  : alu_ctrl_type := "0001"; -- Subtract Y from X
+	constant alu_cmd_and  : alu_ctrl_type := "0010"; -- Bitwise AND of X and Y
+	constant alu_cmd_xor  : alu_ctrl_type := "0011"; -- Bitwise XOR of X and Y
+	constant alu_cmd_or   : alu_ctrl_type := "0100"; -- Bitwise OR of X and Y
+	constant alu_cmd_rl   : alu_ctrl_type := "0101"; -- Rotate Left of X
+	constant alu_cmd_rlc  : alu_ctrl_type := "0110"; -- Rotate Left Circuiar of X
+	constant alu_cmd_rr   : alu_ctrl_type := "0111"; -- Rotate Right of X
+	constant alu_cmd_rrc  : alu_ctrl_type := "1000"; -- Rotate Right Circular of X
+	constant alu_cmd_sla  : alu_ctrl_type := "1001"; -- Shift Left Arithmetic of X
+	constant alu_cmd_sra  : alu_ctrl_type := "1010"; -- Shift Right Arithmetic of X
+	constant alu_cmd_srl  : alu_ctrl_type := "1011"; -- Shift Right Logical of X
+	signal alu_out : cpu_reg_type;
 	attribute syn_keep of alu_out : signal is true;
 	attribute nomerge of alu_out : signal is "";	
 
@@ -264,15 +265,15 @@ architecture behavior of OSR8_CPU is
 -- arithmetic operations, logical operations, and shifts and rotations. 
 -- When such an operation requires a second operand, we can use either 
 -- Register B or a one-byte constant.
-	signal reg_A : integer range 0 to 255;
+	signal reg_A : cpu_reg_type;
 
 -- Register B will operate with the accumulator for eight-bit operatins that
 -- require a second operand, such as addition, subtraction, and logical AND.
-	signal reg_B  : integer range 0 to 255;
+	signal reg_B  : cpu_reg_type;
 
 -- General-purpose eight-bit registers C, D, H, and L. The last two have 
 -- one special function: to act as a loading platform for the stack pointer.
-	signal reg_C, reg_D, reg_E, reg_H, reg_L : integer range 0 to 255;
+	signal reg_C, reg_D, reg_E, reg_H, reg_L : cpu_reg_type;
 	
 -- The flags are bits in the Flag Register, but we work with them as separate
 -- boolean signals so as to simplify our code. We have the Zero flag, Carry
@@ -282,7 +283,7 @@ architecture behavior of OSR8_CPU is
 -- The index registers IX and IY are intended for use as pointers to bytes
 -- in memory. We can increment them and push them onto the stack, as well
 -- as load them with a constant.
-	signal reg_IX, reg_IY : std_logic_vector(ca_top downto 0);
+	signal reg_IX, reg_IY : cpu_ca_type;
 
 -- The Stack Pointer (SP) we use to manage an upward-growing stack. The
 -- Stack Pointer points to the top of the stack, which is the byte most
@@ -290,9 +291,9 @@ architecture behavior of OSR8_CPU is
 -- bytes on the stack. When we push a byte onto the stack, we increment
 -- the stack pointer, then perform the write. When we pop from the stack, we 
 -- read from the stack and then decrement the stack pointer.
-	signal reg_SP : std_logic_vector(ca_top downto 0);
+	signal reg_SP : cpu_ca_type;
 -- State variables and registers for the CPU and its ALU.
-	signal opcode_saved : opcode_t;
+	signal opcode_saved : opcode_type;
 	
 -- The state of the CPU.
 	signal state : integer range 0 to 15;
@@ -323,90 +324,87 @@ begin
 -- The Arithmetic Logic Unit provides an eight-bit adder-subtractor with carry 
 -- in and carry out, as well as logical operations AND, OR, and XOR.
 	ALU : process (all) is
-	variable result : integer range 0 to 511;
+	variable result : alu_result_type;
 	variable result_vec : std_logic_vector(8 downto 0);
 	variable x_vec : std_logic_vector(8 downto 0);
 	begin 
-		x_vec(7 downto 0) := std_logic_vector(to_unsigned(alu_in_x,8));
+		x_vec(7 downto 0) := std_logic_vector(alu_in_x);
 		x_vec(8) := to_std_logic(alu_cin);
 		
-		result := alu_in_x + alu_in_y;
+		result := ('0' & alu_in_x) + ('0' & alu_in_y);
 		
 		case alu_ctrl is
 		
 		-- Add X and Y with Carry
 		when alu_cmd_add =>
-			if alu_cin then result := alu_in_x + alu_in_y + 1;
-			else result := alu_in_x + alu_in_y; end if;
+			if alu_cin then result := ('0' & alu_in_x) + ('0' & alu_in_y) + 1;
+			else result := ('0' & alu_in_x) + ('0' & alu_in_y); end if;
 			
 		-- Subtract Y from X with Borrow
 		when alu_cmd_sub =>
-			if alu_cin then result := alu_in_x - alu_in_y - 1;
-			else result := alu_in_x - alu_in_y; end if;
+			if alu_cin then result := ('0' & alu_in_x) - ('0' & alu_in_y) - 1;
+			else result := ('0' & alu_in_x) - ('0' & alu_in_y); end if;
 			
 		-- Bit-Wise Exclusive OR of A and B
 		when alu_cmd_xor =>
-			result := to_integer(unsigned(
-					std_logic_vector(to_unsigned(alu_in_x,8))
-					xor std_logic_vector(to_unsigned(alu_in_y,8)) ));
+			result := '0' & unsigned(
+					std_logic_vector(alu_in_x) xor std_logic_vector(alu_in_y) );
 			
 		-- Bit-Wise OR of A and B
 		when alu_cmd_or =>
-			result := to_integer(unsigned(
-					std_logic_vector(to_unsigned(alu_in_x,8))
-					or std_logic_vector(to_unsigned(alu_in_y,8)) ));
+			result := '0' & unsigned(
+					std_logic_vector(alu_in_x) or std_logic_vector(alu_in_y) );
 					
 		-- Bit-Wise Logical AND of X and Y
 		when alu_cmd_and =>
-			result := to_integer(unsigned(
-					std_logic_vector(to_unsigned(alu_in_x,8))
-					and std_logic_vector(to_unsigned(alu_in_y,8)) ));
+			result := '0' & unsigned(
+					std_logic_vector(alu_in_x) and std_logic_vector(alu_in_y) );
 					
 		 -- Rotate Left of X	
 		when alu_cmd_rl  => 
 			result_vec(8 downto 1) := x_vec(7 downto 0);
 			result_vec(0) := x_vec(8);	
-			result := to_integer(unsigned(result_vec));
+			result := unsigned(result_vec);
 			
 		 -- Rotate Left Circuiar of X
 		when alu_cmd_rlc => 
 			result_vec(7 downto 1) := x_vec(6 downto 0);
 			result_vec(0) := x_vec(7);	
 			result_vec(8) := x_vec(7);
-			result := to_integer(unsigned(result_vec));
+			result := unsigned(result_vec);
 			
 		-- Rotate Right of X
 		when alu_cmd_rr  =>  
 			result_vec(7 downto 0) := x_vec(8 downto 1);
 			result_vec(8) := x_vec(0);		
-			result := to_integer(unsigned(result_vec));
+			result := unsigned(result_vec);
 			
 		-- Rotate Right Circular of X
 		when alu_cmd_rrc =>  
 			result_vec(6 downto 0) := x_vec(7 downto 1);
 			result_vec(7) := x_vec(0);		
 			result_vec(8) := x_vec(0);		
-			result := to_integer(unsigned(result_vec));
+			result := unsigned(result_vec);
 			
 		-- Shift Left Arithmetic of X
 		when alu_cmd_sla =>  
 			result_vec(8 downto 1) := x_vec(7 downto 0);
 			result_vec(0) :='0';	
-			result := to_integer(unsigned(result_vec));
+			result := unsigned(result_vec);
 			
 		-- Shift Right Arithmetic of X
 		when alu_cmd_sra =>  
 			result_vec(6 downto 0) := x_vec(7 downto 1);
 			result_vec(7) := x_vec(7);		
 			result_vec(8) := x_vec(0);		
-			result := to_integer(unsigned(result_vec));
+			result := unsigned(result_vec);
 			
 		-- Shift Right Logical of X
 		when alu_cmd_srl => 
 			result_vec(6 downto 0) := x_vec(7 downto 1);
 			result_vec(7) := '0';		
 			result_vec(8) := x_vec(0);		
-			result := to_integer(unsigned(result_vec));
+			result := unsigned(result_vec);
 
 		-- Let the default values stand.
 		when others =>
@@ -414,8 +412,8 @@ begin
 			
 		end case;
 		
-		alu_out <= (result rem 256);
-		alu_cout <= (result >= 256);
+		alu_out <= unsigned(result(7 downto 0));
+		alu_cout <= (result(8) = '1');
 	end process;
 
 -- The Central Processing Unit reads and writes from an external memory space with
@@ -429,7 +427,7 @@ begin
 		-- The next_r variables we use to set up the value of A that will be asserted 
 		-- on the next rising edge of CK.
 		variable next_A, next_B, next_C, next_D, 
-			next_E, next_H, next_L : integer range 0 to 255;
+			next_E, next_H, next_L : cpu_reg_type;
 		
 		-- The next values of the flag bits.
 		variable next_flag_Z, next_flag_C, next_flag_S, next_flag_I : boolean;
@@ -439,16 +437,13 @@ begin
 				
 		-- Variables for the microcode state machine, and constants for the state
 		-- names.
-		variable opcode : opcode_t;
-		variable first_operand, second_operand : integer range 0 to 255;
+		variable opcode : opcode_type;
+		variable first_operand, second_operand : cpu_reg_type;
 		variable next_state : integer range 0 to 15;
 		
 		-- We have next_pc to set up the next program counter value.
-		variable next_pc : std_logic_vector(pa_top downto 0);
-		
-		-- A variable to store the top byte of the program counter.
-		variable prog_lo : std_logic_vector(1 downto 0);
-		
+		variable next_pc : cpu_pc_type;
+				
 		-- A variable to track changes in the diagnostic outputs.
 		variable next_SIG : std_logic_vector(3 downto 0);
 		variable next_RISRV : boolean;
@@ -515,8 +510,8 @@ begin
 					opcode_saved <= sw_int;
 					next_RISRV := true;
 				else
-					opcode := unsigned(prog_data(6 downto 0));
-					opcode_saved <= unsigned(prog_data(6 downto 0));
+					opcode := prog_data(6 downto 0);
+					opcode_saved <= prog_data(6 downto 0);
 				end if;
 				
 				-- Make some signals.
@@ -598,13 +593,14 @@ begin
 				-- Stack Pointer load to and from HL. We use H for the upper bits 
 				-- of SP and L for the lower bits. Clock Cycles = 1.
 				when ld_HL_SP =>
-					next_H := to_integer(unsigned(reg_SP(ca_top downto 8)));
-					next_L := to_integer(unsigned(reg_SP(7 downto 0)));
+					next_H(7 downto ca_top-7) := (others => '0');
+					next_H(ca_top-8 downto 0) := unsigned(reg_SP(ca_top downto 8));
+					next_L := unsigned(reg_SP(7 downto 0));
 					next_state := read_opcode;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 				when ld_SP_HL =>
-					next_SP(ca_top downto 8) := std_logic_vector(to_unsigned(reg_H,cpu_addr_len-8));
-					next_SP(7 downto 0) := std_logic_vector(to_unsigned(reg_L,8));
+					next_SP(ca_top downto 8) := std_logic_vector(reg_H(ca_top-8 downto 0));
+					next_SP(7 downto 0) := std_logic_vector(reg_L);
 					next_state := read_opcode;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 
@@ -616,13 +612,14 @@ begin
 				-- ld PC,HL; for a total of 16 clock cycles compared to 3 for an
 				-- absolute, unconditional jump. Clock Cycles = 1.
 				when ld_HL_PC =>
-					next_H := to_integer(unsigned(prog_cntr(pa_top downto 8)));
-					next_L := to_integer(unsigned(prog_cntr(7 downto 0)));
+					next_H(7 downto pa_top-7) := (others => '0');
+					next_H(pa_top-8 downto 0) := unsigned(prog_cntr(pa_top downto 8));
+					next_L := unsigned(prog_cntr(7 downto 0));
 					next_state := read_opcode;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 				when ld_PC_HL =>
-					next_pc(pa_top downto 8) := std_logic_vector(to_unsigned(reg_H,prog_cntr_len-8));
-					next_pc(7 downto 0) := std_logic_vector(to_unsigned(reg_L,8));
+					next_pc(pa_top downto 8) := std_logic_vector(reg_H(pa_top-8 downto 0));
+					next_pc(7 downto 0) := std_logic_vector(reg_L);
 					next_state := read_opcode;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 					
@@ -645,13 +642,13 @@ begin
 					WR <= true;
 					DS <= true;
 					case opcode is
-						when push_A => cpu_data_out <= std_logic_vector(to_unsigned(reg_A,8));
-						when push_B => cpu_data_out <= std_logic_vector(to_unsigned(reg_B,8));
-						when push_C => cpu_data_out <= std_logic_vector(to_unsigned(reg_C,8));
-						when push_D => cpu_data_out <= std_logic_vector(to_unsigned(reg_D,8));
-						when push_E => cpu_data_out <= std_logic_vector(to_unsigned(reg_E,8));
-						when push_H => cpu_data_out <= std_logic_vector(to_unsigned(reg_H,8));
-						when push_L => cpu_data_out <= std_logic_vector(to_unsigned(reg_L,8));
+						when push_A => cpu_data_out <= std_logic_vector(reg_A);
+						when push_B => cpu_data_out <= std_logic_vector(reg_B);
+						when push_C => cpu_data_out <= std_logic_vector(reg_C);
+						when push_D => cpu_data_out <= std_logic_vector(reg_D);
+						when push_E => cpu_data_out <= std_logic_vector(reg_E);
+						when push_H => cpu_data_out <= std_logic_vector(reg_H);
+						when push_L => cpu_data_out <= std_logic_vector(reg_L);
 						when push_F =>
 							cpu_data_out <= (others => '0');
 							cpu_data_out(7) <= to_std_logic(flag_I);
@@ -714,14 +711,14 @@ begin
 				-- will be written. By that time, we will be processing the next instruction.
 				-- Clock Cycles = 1.
 				when ld_ix_A =>
-					cpu_data_out <= std_logic_vector(to_unsigned(reg_A,8));
+					cpu_data_out <= std_logic_vector(reg_A);
 					cpu_addr <= reg_IX;
 					WR <= true;
 					DS <= true;
 					next_state := read_opcode;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 				when ld_iy_A =>
-					cpu_data_out <= std_logic_vector(to_unsigned(reg_A,8));
+					cpu_data_out <= std_logic_vector(reg_A);
 					cpu_addr <= reg_IY;
 					WR <= true;
 					DS <= true;
@@ -859,7 +856,7 @@ begin
 			-- the program counter, either to point to the first byte of the next instruction, 
 			-- or to point to the second operand, which will be the LO byte of a parameter.
 			elsif (state = read_first_operand) then
-				first_operand := to_integer(unsigned(prog_data));
+				first_operand := unsigned(prog_data);
 				
 				case opcode_saved is
 				
@@ -900,7 +897,7 @@ begin
 			-- value. If we have enough information to begin a write cycle, we do so.
 			-- We increment the program counter to point to the next instruction opcode.
 			elsif (state = read_second_operand) then
-				second_operand := to_integer(unsigned(prog_data));
+				second_operand := unsigned(prog_data);
 				
 				case opcode_saved is 
 				
@@ -912,9 +909,9 @@ begin
 				-- clock cycle, in the read_first_byte state. Clock Cycles = 4.
 				when ld_A_mm =>
 					cpu_addr(ca_top downto 8) <= 
-						std_logic_vector(to_unsigned(first_operand,cpu_addr_len-8));
+						std_logic_vector(first_operand(ca_top-8 downto 0));
 					cpu_addr(7 downto 0) <= 
-						std_logic_vector(to_unsigned(second_operand,8));
+						std_logic_vector(second_operand);
 					WR <= false;
 					DS <= true;
 					next_state := read_first_byte;
@@ -927,9 +924,9 @@ begin
 				-- decoding the next instruction. Clock Cycles = 3.
 				when ld_mm_A =>
 					cpu_addr(ca_top downto 8) <= 
-						std_logic_vector(to_unsigned(first_operand,cpu_addr_len-8));
-					cpu_addr(7 downto 0) <= std_logic_vector(to_unsigned(second_operand,8));
-					cpu_data_out <= std_logic_vector(to_unsigned(reg_A,8));
+						std_logic_vector(first_operand(ca_top-8 downto 0));
+					cpu_addr(7 downto 0) <= std_logic_vector(second_operand);
+					cpu_data_out <= std_logic_vector(reg_A);
 					WR <= true;
 					DS <= true;
 					next_state := read_opcode;
@@ -937,13 +934,15 @@ begin
 					
 				-- Direct load of constants into index registers. Clock Cycles = 3.
 				when ld_IX_nn =>
-					next_IX(ca_top downto 8) := std_logic_vector(to_unsigned(first_operand,cpu_addr_len-8));
-					next_IX(7 downto 0) := std_logic_vector(to_unsigned(second_operand,8));
+					next_IX(ca_top downto 8) := 
+						std_logic_vector(first_operand(ca_top-8 downto 0));
+					next_IX(7 downto 0) := std_logic_vector(second_operand);
 					next_state := read_opcode;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 				when ld_IY_nn =>
-					next_IY(ca_top downto 8) := std_logic_vector(to_unsigned(first_operand,cpu_addr_len-8));
-					next_IY(7 downto 0) := std_logic_vector(to_unsigned(second_operand,8));
+					next_IY(ca_top downto 8) := 
+						std_logic_vector(first_operand(ca_top-8 downto 0));
+					next_IY(7 downto 0) := std_logic_vector(second_operand);
 					next_state := read_opcode;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 					
@@ -983,9 +982,9 @@ begin
 						((opcode_saved = jp_np_nn) and flag_S) then
 						next_SIG(3) := '1';
 						next_pc(pa_top downto 8) := 
-							std_logic_vector(to_unsigned(first_operand,prog_cntr_len-8));
+							std_logic_vector(first_operand(pa_top-8 downto 0));
 						next_pc(7 downto 0) := 
-							std_logic_vector(to_unsigned(second_operand,8));
+							std_logic_vector(second_operand);
 					else 
 						next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 					end if;
@@ -1007,7 +1006,7 @@ begin
 				-- bus. On the next rising edge, even as we start decoding the next instruction,
 				-- we will load the new value into the accumulator. Clock cycles = 2.
 				when ld_A_mm | ld_A_ix | ld_A_iy => 
-					next_A := to_integer(unsigned(cpu_data_in));
+					next_A := unsigned(cpu_data_in);
 					next_pc := prog_cntr;
 					next_state := read_opcode;
 					
@@ -1016,13 +1015,13 @@ begin
 				-- destination register on the next rising edge of the clock. 
 				when pop_A | pop_B | pop_C | pop_D | pop_E | pop_H | pop_L | pop_F =>
 					case opcode_saved is
-						when pop_A => next_A := to_integer(unsigned(cpu_data_in));
-						when pop_B => next_B := to_integer(unsigned(cpu_data_in));
-						when pop_C => next_C := to_integer(unsigned(cpu_data_in));
-						when pop_D => next_D := to_integer(unsigned(cpu_data_in));
-						when pop_E => next_E := to_integer(unsigned(cpu_data_in));
-						when pop_H => next_H := to_integer(unsigned(cpu_data_in));
-						when pop_L => next_L := to_integer(unsigned(cpu_data_in));
+						when pop_A => next_A := unsigned(cpu_data_in);
+						when pop_B => next_B := unsigned(cpu_data_in);
+						when pop_C => next_C := unsigned(cpu_data_in);
+						when pop_D => next_D := unsigned(cpu_data_in);
+						when pop_E => next_E := unsigned(cpu_data_in);
+						when pop_H => next_H := unsigned(cpu_data_in);
+						when pop_L => next_L := unsigned(cpu_data_in);
 						when pop_F => 
 							next_flag_I := (cpu_data_in(7) = '1');
 							next_flag_C := (cpu_data_in(2) = '1');		
@@ -1140,14 +1139,11 @@ begin
 					cpu_data_out <= prog_cntr(7 downto 0);
 					if (opcode_saved = call_nn) then
 						next_pc(pa_top downto 8) := 
-							std_logic_vector(to_unsigned(first_operand,prog_cntr_len-8));
+							std_logic_vector(first_operand(pa_top-8 downto 0));
 						next_pc(7 downto 0) := 
-							std_logic_vector(to_unsigned(second_operand,8));
-					else
-						next_pc(pa_top downto 8) := 
-							std_logic_vector(to_unsigned((interrupt_pc/256),prog_cntr_len-8));
-						next_pc(7 downto 0) := 
-							std_logic_vector(to_unsigned((interrupt_pc rem 256),8));
+							std_logic_vector(second_operand);
+					else 
+						next_pc := std_logic_vector(to_unsigned(interrupt_pc, prog_cntr_len));
 					end if;
 					next_state := read_opcode;
 				
@@ -1194,11 +1190,11 @@ begin
 	-- the behavior of the ALU when we are in the read_opcode state. We use the current 
 	-- value of the program data as the opcode that controls the function of the ALU.
 	MUX : process (all) is
-		variable opcode_now : opcode_t;
-		variable data_now : integer range 0 to 255;
+		variable opcode_now : opcode_type;
+		variable data_now : cpu_reg_type;
 
-	begin		opcode_now := unsigned(prog_data(6 downto 0));
-		data_now := to_integer(unsigned(prog_data));
+	begin		opcode_now := prog_data(6 downto 0);
+		data_now := unsigned(prog_data(7 downto 0));
 		alu_in_x <= reg_A;
 		alu_in_y <= reg_B;
 		alu_cin  <= false;
@@ -1211,25 +1207,25 @@ begin
 			-- Eight-bit register increment and decrement.
 			when inc_A | dec_A =>
 				alu_in_x <= reg_A;
-				alu_in_y <= 1;
+				alu_in_y <= "00000001";
 				alu_cin <= false;
 				if (opcode_now = inc_A) then alu_ctrl <= alu_cmd_add;
 				else alu_ctrl <= alu_cmd_sub; end if;	
 			when inc_B | dec_B =>
 				alu_in_x <= reg_B;
-				alu_in_y <= 1;
+				alu_in_y <= "00000001";
 				alu_cin <= false;
 				if (opcode_now = inc_B) then alu_ctrl <= alu_cmd_add; 
 				else alu_ctrl <= alu_cmd_sub; end if;	
 			when inc_C | dec_C =>
 				alu_in_x <= reg_C;
-				alu_in_y <= 1;
+				alu_in_y <= "00000001";
 				alu_cin <= false;
 				if (opcode_now = inc_C) then alu_ctrl <= alu_cmd_add; 
 				else alu_ctrl <= alu_cmd_sub; end if;	
 			when inc_D | dec_D =>
 				alu_in_x <= reg_D;
-				alu_in_y <= 1;
+				alu_in_y <= "00000001";
 				alu_cin <= false;
 				if (opcode_now = inc_D) then alu_ctrl <= alu_cmd_add;
 				else alu_ctrl <= alu_cmd_sub; end if;	
@@ -1237,7 +1233,7 @@ begin
 			-- The delay instruction decrements A until it is zero.
 			when dly_A =>
 				alu_in_x <= reg_A;
-				alu_in_y <= 1;
+				alu_in_y <= "00000001";
 				alu_cin <= false;
 				alu_ctrl <= alu_cmd_sub;
 			
