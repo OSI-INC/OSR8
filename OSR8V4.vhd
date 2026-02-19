@@ -132,123 +132,132 @@ architecture behavior of OSR8_CPU is
 -- "ld" for "load", and so on. Our syntax for assembler code follows that
 -- of the venerable Z80 microprocessors.
 
-	constant nop      : integer := 16#00#; -- nop
-	constant jp_nn    : integer := 16#01#; -- jp nn
-	constant jp_nz_nn : integer := 16#02#; -- jp nz,nn
-	constant jp_z_nn  : integer := 16#03#; -- jp z,nn
-	constant jp_nc_nn : integer := 16#04#; -- jp nc,nn
-	constant jp_c_nn  : integer := 16#05#; -- jp c,nn
-	constant jp_np_nn : integer := 16#06#; -- jp np,nn
-	constant jp_p_nn  : integer := 16#07#; -- jp p,nn
-	constant call_nn  : integer := 16#08#; -- call nn
-	constant sw_int   : integer := 16#09#; -- int
-	constant ret_cll  : integer := 16#0A#; -- ret
-	constant ret_int  : integer := 16#0B#; -- rti
-	constant cpu_wt   : integer := 16#0C#; -- wait
-	constant clr_iflg : integer := 16#0D#; -- clri
-	constant set_iflg : integer := 16#0E#; -- seti
+	subtype opcode_t is unsigned(6 downto 0);
+
+	constant nop      : opcode_t := to_unsigned(16#00#,7); -- nop
+	constant jp_nn    : opcode_t := to_unsigned(16#01#,7); -- jp nn
+	constant jp_nz_nn : opcode_t := to_unsigned(16#02#,7); -- jp nz,nn
+	constant jp_z_nn  : opcode_t := to_unsigned(16#03#,7); -- jp z,nn
+	constant jp_nc_nn : opcode_t := to_unsigned(16#04#,7); -- jp nc,nn
+	constant jp_c_nn  : opcode_t := to_unsigned(16#05#,7); -- jp c,nn
+	constant jp_np_nn : opcode_t := to_unsigned(16#06#,7); -- jp np,nn
+	constant jp_p_nn  : opcode_t := to_unsigned(16#07#,7); -- jp p,nn
+	constant call_nn  : opcode_t := to_unsigned(16#08#,7); -- call nn
+	constant sw_int   : opcode_t := to_unsigned(16#09#,7); -- int
+	constant ret_cll  : opcode_t := to_unsigned(16#0A#,7); -- ret
+	constant ret_int  : opcode_t := to_unsigned(16#0B#,7); -- rti
+	constant cpu_wt   : opcode_t := to_unsigned(16#0C#,7); -- wait
+	constant clr_iflg : opcode_t := to_unsigned(16#0D#,7); -- clri
+	constant set_iflg : opcode_t := to_unsigned(16#0E#,7); -- seti
 	
-	constant ld_A_n   : integer := 16#10#; -- ld A,n
-	constant ld_IX_nn : integer := 16#11#; -- ld IX,nn
-	constant ld_IY_nn : integer := 16#12#; -- ld IY,nn
-	constant ld_HL_nn : integer := 16#13#; -- ld HL,nn
-	constant ld_A_mm  : integer := 16#14#; -- ld A,(nn)
-	constant ld_mm_A  : integer := 16#15#; -- ld (nn),A
-	constant ld_A_ix  : integer := 16#16#; -- ld A,(IX)
-	constant ld_A_iy  : integer := 16#17#; -- ld A,(IY)
-	constant ld_ix_A  : integer := 16#18#; -- ld (IX),A
-	constant ld_iy_A  : integer := 16#19#; -- ld (IY),A
-	constant ld_HL_SP : integer := 16#1A#; -- ld HL,SP
-	constant ld_SP_HL : integer := 16#1B#; -- ld SP,HL
-	constant ld_HL_PC : integer := 16#1C#; -- ld HL,PC
-	constant ld_PC_HL : integer := 16#1D#; -- ld PC,HL	
+	constant ld_A_n   : opcode_t := to_unsigned(16#10#,7); -- ld A,n
+	constant ld_IX_nn : opcode_t := to_unsigned(16#11#,7); -- ld IX,nn
+	constant ld_IY_nn : opcode_t := to_unsigned(16#12#,7); -- ld IY,nn
+	constant ld_HL_nn : opcode_t := to_unsigned(16#13#,7); -- ld HL,nn
+	constant ld_A_mm  : opcode_t := to_unsigned(16#14#,7); -- ld A,(nn)
+	constant ld_mm_A  : opcode_t := to_unsigned(16#15#,7); -- ld (nn),A
+	constant ld_A_ix  : opcode_t := to_unsigned(16#16#,7); -- ld A,(IX)
+	constant ld_A_iy  : opcode_t := to_unsigned(16#17#,7); -- ld A,(IY)
+	constant ld_ix_A  : opcode_t := to_unsigned(16#18#,7); -- ld (IX),A
+	constant ld_iy_A  : opcode_t := to_unsigned(16#19#,7); -- ld (IY),A
+	constant ld_HL_SP : opcode_t := to_unsigned(16#1A#,7); -- ld HL,SP
+	constant ld_SP_HL : opcode_t := to_unsigned(16#1B#,7); -- ld SP,HL
+	constant ld_HL_PC : opcode_t := to_unsigned(16#1C#,7); -- ld HL,PC
+	constant ld_PC_HL : opcode_t := to_unsigned(16#1D#,7); -- ld PC,HL	
 			
-	constant push_A   : integer := 16#20#; -- push A
-	constant push_B   : integer := 16#21#; -- push B
-	constant push_C   : integer := 16#22#; -- push C
-	constant push_D   : integer := 16#23#; -- push D
-	constant push_E   : integer := 16#24#; -- push E
-	constant push_H   : integer := 16#25#; -- push H
-	constant push_L   : integer := 16#26#; -- push L
-	constant push_F   : integer := 16#27#; -- push F
-	constant push_IX  : integer := 16#28#; -- push IX
-	constant push_IY  : integer := 16#29#; -- push IY
+	constant push_A   : opcode_t := to_unsigned(16#20#,7); -- push A
+	constant push_B   : opcode_t := to_unsigned(16#21#,7); -- push B
+	constant push_C   : opcode_t := to_unsigned(16#22#,7); -- push C
+	constant push_D   : opcode_t := to_unsigned(16#23#,7); -- push D
+	constant push_E   : opcode_t := to_unsigned(16#24#,7); -- push E
+	constant push_H   : opcode_t := to_unsigned(16#25#,7); -- push H
+	constant push_L   : opcode_t := to_unsigned(16#26#,7); -- push L
+	constant push_F   : opcode_t := to_unsigned(16#27#,7); -- push F
+	constant push_IX  : opcode_t := to_unsigned(16#28#,7); -- push IX
+	constant push_IY  : opcode_t := to_unsigned(16#29#,7); -- push IY
 	
-	constant pop_A    : integer := 16#30#; -- pop A
-	constant pop_B    : integer := 16#31#; -- pop B
-	constant pop_C    : integer := 16#32#; -- pop C
-	constant pop_D    : integer := 16#33#; -- pop D
-	constant pop_E    : integer := 16#34#; -- pop E
-	constant pop_H    : integer := 16#35#; -- pop H
-	constant pop_L    : integer := 16#36#; -- pop L
-	constant pop_F    : integer := 16#37#; -- pop F
-	constant pop_IX   : integer := 16#38#; -- pop IX
-	constant pop_IY   : integer := 16#39#; -- pop IY
+	constant pop_A    : opcode_t := to_unsigned(16#30#,7); -- pop A
+	constant pop_B    : opcode_t := to_unsigned(16#31#,7); -- pop B
+	constant pop_C    : opcode_t := to_unsigned(16#32#,7); -- pop C
+	constant pop_D    : opcode_t := to_unsigned(16#33#,7); -- pop D
+	constant pop_E    : opcode_t := to_unsigned(16#34#,7); -- pop E
+	constant pop_H    : opcode_t := to_unsigned(16#35#,7); -- pop H
+	constant pop_L    : opcode_t := to_unsigned(16#36#,7); -- pop L
+	constant pop_F    : opcode_t := to_unsigned(16#37#,7); -- pop F
+	constant pop_IX   : opcode_t := to_unsigned(16#38#,7); -- pop IX
+	constant pop_IY   : opcode_t := to_unsigned(16#39#,7); -- pop IY
 
-	constant add_A_B  : integer := 16#40#; -- add A,B
-	constant add_A_n  : integer := 16#41#; -- add A,n
-	constant adc_A_B  : integer := 16#42#; -- adc A,B
-	constant adc_A_n  : integer := 16#43#; -- adc A,n
-	constant sub_A_B  : integer := 16#44#; -- sub A,B
-	constant sub_A_n  : integer := 16#45#; -- sub A,n
-	constant sbc_A_B  : integer := 16#46#; -- sbc A,B
-	constant sbc_A_n  : integer := 16#47#; -- sbc A,n
-	constant clr_aflg : integer := 16#4F#; -- clrf
+	constant add_A_B  : opcode_t := to_unsigned(16#40#,7); -- add A,B
+	constant add_A_n  : opcode_t := to_unsigned(16#41#,7); -- add A,n
+	constant adc_A_B  : opcode_t := to_unsigned(16#42#,7); -- adc A,B
+	constant adc_A_n  : opcode_t := to_unsigned(16#43#,7); -- adc A,n
+	constant sub_A_B  : opcode_t := to_unsigned(16#44#,7); -- sub A,B
+	constant sub_A_n  : opcode_t := to_unsigned(16#45#,7); -- sub A,n
+	constant sbc_A_B  : opcode_t := to_unsigned(16#46#,7); -- sbc A,B
+	constant sbc_A_n  : opcode_t := to_unsigned(16#47#,7); -- sbc A,n
+	constant clr_aflg : opcode_t := to_unsigned(16#4F#,7); -- clrf
 	
-	constant inc_A    : integer := 16#50#; -- inc A
-	constant inc_B    : integer := 16#51#; -- inc B
-	constant inc_C    : integer := 16#52#; -- inc C
-	constant inc_D    : integer := 16#53#; -- inc D
-	constant inc_IX   : integer := 16#59#; -- inc IX
-	constant inc_IY   : integer := 16#5A#; -- inc IY
+	constant inc_A    : opcode_t := to_unsigned(16#50#,7); -- inc A
+	constant inc_B    : opcode_t := to_unsigned(16#51#,7); -- inc B
+	constant inc_C    : opcode_t := to_unsigned(16#52#,7); -- inc C
+	constant inc_D    : opcode_t := to_unsigned(16#53#,7); -- inc D
+	constant inc_IX   : opcode_t := to_unsigned(16#59#,7); -- inc IX
+	constant inc_IY   : opcode_t := to_unsigned(16#5A#,7); -- inc IY
 
-	constant dec_A    : integer := 16#60#; -- dec A
-	constant dec_B    : integer := 16#61#; -- dec B
-	constant dec_C    : integer := 16#62#; -- dec C
-	constant dec_D    : integer := 16#63#; -- dec D
-	constant dly_A    : integer := 16#67#; -- dly A
-	constant dec_IX   : integer := 16#69#; -- dec IX
-	constant dec_IY   : integer := 16#6A#; -- dec IY
+	constant dec_A    : opcode_t := to_unsigned(16#60#,7); -- dec A
+	constant dec_B    : opcode_t := to_unsigned(16#61#,7); -- dec B
+	constant dec_C    : opcode_t := to_unsigned(16#62#,7); -- dec C
+	constant dec_D    : opcode_t := to_unsigned(16#63#,7); -- dec D
+	constant dly_A    : opcode_t := to_unsigned(16#67#,7); -- dly A
+	constant dec_IX   : opcode_t := to_unsigned(16#69#,7); -- dec IX
+	constant dec_IY   : opcode_t := to_unsigned(16#6A#,7); -- dec IY
 	
-	constant and_A_B  : integer := 16#70#; -- and A,B
-	constant and_A_n  : integer := 16#71#; -- and A,n
-	constant or_A_B   : integer := 16#72#; -- or A,B
-	constant or_A_n   : integer := 16#73#; -- or A,n
-	constant xor_A_B  : integer := 16#74#; -- xor A,B
-	constant xor_A_n  : integer := 16#75#; -- xor A,n
+	constant and_A_B  : opcode_t := to_unsigned(16#70#,7); -- and A,B
+	constant and_A_n  : opcode_t := to_unsigned(16#71#,7); -- and A,n
+	constant or_A_B   : opcode_t := to_unsigned(16#72#,7); -- or A,B
+	constant or_A_n   : opcode_t := to_unsigned(16#73#,7); -- or A,n
+	constant xor_A_B  : opcode_t := to_unsigned(16#74#,7); -- xor A,B
+	constant xor_A_n  : opcode_t := to_unsigned(16#75#,7); -- xor A,n
 	
-	constant rl_A     : integer := 16#78#; -- rl A
-	constant rlc_A    : integer := 16#79#; -- rlc A
-	constant rr_A     : integer := 16#7A#; -- rr A
-	constant rrc_A    : integer := 16#7B#; -- rrc A
-	constant sla_A    : integer := 16#7C#; -- sla A
-	constant sra_A    : integer := 16#7D#; -- sra A
-	constant srl_A    : integer := 16#7E#; -- srl A
+	constant rl_A     : opcode_t := to_unsigned(16#78#,7); -- rl A
+	constant rlc_A    : opcode_t := to_unsigned(16#79#,7); -- rlc A
+	constant rr_A     : opcode_t := to_unsigned(16#7A#,7); -- rr A
+	constant rrc_A    : opcode_t := to_unsigned(16#7B#,7); -- rrc A
+	constant sla_A    : opcode_t := to_unsigned(16#7C#,7); -- sla A
+	constant sra_A    : opcode_t := to_unsigned(16#7D#,7); -- sra A
+	constant srl_A    : opcode_t := to_unsigned(16#7E#,7); -- srl A
 	
 -- Attributes to guide the compiler.
 	attribute syn_keep : boolean;
 	attribute nomerge : string;
 
 -- Arithmetic Logic Unit signals and constants
-	signal alu_out : integer range 0 to 255;
-	attribute syn_keep of alu_out : signal is true;
-	attribute nomerge of alu_out : signal is "";
-	signal alu_in_x, alu_in_y : integer range 0 to 255;
+	subtype alu_byte_type is integer range 0 to 255;
+	subtype alu_result_type is integer range 0 to 511;
+	subtype alu_ctrl_type is integer range 0 to 15;
+	
+	signal alu_in_x, alu_in_y : alu_byte_type;
 	signal alu_cin, alu_cout : boolean;
-	signal alu_ctrl : integer range 0 to 15;
-	constant alu_cmd_add  : integer := 0; -- Add X and Y
-	constant alu_cmd_sub  : integer := 1; -- Subtract Y from X
-	constant alu_cmd_and  : integer := 2; -- Bitwise AND of X and Y
-	constant alu_cmd_xor  : integer := 3; -- Bitwise XOR of X and Y
-	constant alu_cmd_or   : integer := 4; -- Bitwise OR of X and Y
-	constant alu_cmd_rl   : integer := 5; -- Rotate Left of X
-	constant alu_cmd_rlc  : integer := 6; -- Rotate Left Circuiar of X
-	constant alu_cmd_rr   : integer := 7; -- Rotate Right of X
-	constant alu_cmd_rrc  : integer := 8; -- Rotate Right Circular of X
-	constant alu_cmd_sla  : integer := 9; -- Shift Left Arithmetic of X
-	constant alu_cmd_sra  : integer := 10; -- Shift Right Arithmetic of X
-	constant alu_cmd_srl  : integer := 11; -- Shift Right Logical of X
-		
+
+	signal alu_ctrl : alu_ctrl_type;
+	constant alu_cmd_add  : alu_ctrl_type := 0; -- Add X and Y
+	constant alu_cmd_sub  : alu_ctrl_type := 1; -- Subtract Y from X
+	constant alu_cmd_and  : alu_ctrl_type := 2; -- Bitwise AND of X and Y
+	constant alu_cmd_xor  : alu_ctrl_type := 3; -- Bitwise XOR of X and Y
+	constant alu_cmd_or   : alu_ctrl_type := 4; -- Bitwise OR of X and Y
+	constant alu_cmd_rl   : alu_ctrl_type := 5; -- Rotate Left of X
+	constant alu_cmd_rlc  : alu_ctrl_type := 6; -- Rotate Left Circuiar of X
+	constant alu_cmd_rr   : alu_ctrl_type := 7; -- Rotate Right of X
+	constant alu_cmd_rrc  : alu_ctrl_type := 8; -- Rotate Right Circular of X
+	constant alu_cmd_sla  : alu_ctrl_type := 9; -- Shift Left Arithmetic of X
+	constant alu_cmd_sra  : alu_ctrl_type := 10; -- Shift Right Arithmetic of X
+	constant alu_cmd_srl  : alu_ctrl_type := 11; -- Shift Right Logical of X
+	
+	signal alu_out : alu_byte_type;
+	attribute syn_keep of alu_out : signal is true;
+	attribute nomerge of alu_out : signal is "";	
+
+
 -- CPU Registers
 
 -- The Accumulator, or Register A, in which we get the result of eight-bit
@@ -283,7 +292,7 @@ architecture behavior of OSR8_CPU is
 -- read from the stack and then decrement the stack pointer.
 	signal reg_SP : std_logic_vector(ca_top downto 0);
 -- State variables and registers for the CPU and its ALU.
-	signal opcode_saved : integer range 0 to 127;
+	signal opcode_saved : opcode_t;
 	
 -- The state of the CPU.
 	signal state : integer range 0 to 15;
@@ -430,7 +439,7 @@ begin
 				
 		-- Variables for the microcode state machine, and constants for the state
 		-- names.
-		variable opcode : integer range 0 to 127;
+		variable opcode : opcode_t;
 		variable first_operand, second_operand : integer range 0 to 255;
 		variable next_state : integer range 0 to 15;
 		
@@ -506,8 +515,8 @@ begin
 					opcode_saved <= sw_int;
 					next_RISRV := true;
 				else
-					opcode := to_integer(unsigned(prog_data));
-					opcode_saved <= to_integer(unsigned(prog_data));
+					opcode := unsigned(prog_data(6 downto 0));
+					opcode_saved <= unsigned(prog_data(6 downto 0));
 				end if;
 				
 				-- Make some signals.
@@ -1185,10 +1194,10 @@ begin
 	-- the behavior of the ALU when we are in the read_opcode state. We use the current 
 	-- value of the program data as the opcode that controls the function of the ALU.
 	MUX : process (all) is
-		variable opcode_now : integer range 0 to 127;
+		variable opcode_now : opcode_t;
 		variable data_now : integer range 0 to 255;
 
-	begin		opcode_now := to_integer(unsigned(prog_data));
+	begin		opcode_now := unsigned(prog_data(6 downto 0));
 		data_now := to_integer(unsigned(prog_data));
 		alu_in_x <= reg_A;
 		alu_in_y <= reg_B;
