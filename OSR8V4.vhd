@@ -51,9 +51,11 @@
 -- A, but not an addition or subtraction of register B. Subject to multiple
 -- adjustments and re-compilations on an A3041 platform. Stable and robust.
 
--- V4.2, [18-FEB-26] Start new version. Want to introduce an Interrupt Service
--- (ISRV) flag, but in doing so, discover instability. Introduce a signal
--- opcode_saved.
+-- V4.2, [18-FEB-26] Start new version. Introduce a signals opcode_saved and
+-- state for the CPU. Separate the ALU input multiplexer into its own process.
+-- find and fix bugs in the MUX from use of different copies of opcode. Add
+-- Interrupt Service (ISRV) flag that indicates the CPU is servicing an
+-- interrupt.
 
 library ieee;  
 use ieee.std_logic_1164.all;
@@ -107,6 +109,7 @@ entity OSR8_CPU is
 		WR : out boolean; -- Write Cycle
 		DS : out boolean; -- Data Strobe
 		IRQ : in boolean; -- Interrupt Request
+		ISRV : out boolean; -- Interrupt Service
 		SIG : out std_logic_vector(3 downto 0); -- Signals for Debugging
 		RESET : in std_logic; -- Hard Reset
 		CK : in std_logic); -- The clock, duty cycle 50%.
@@ -285,6 +288,11 @@ architecture behavior of OSR8_CPU is
 -- The state of the CPU.
 	signal state : integer range 0 to 15;
 	
+-- This signal is the one the CPU sets on the rising edge of CK to
+-- indicated that it is executing an interrupt routine. We will delay
+-- until the falling edge of CK to make ISRV.
+	signal RISRV : boolean;
+	
 -- The state values. We use single-bit values to simplify the state
 -- machine logic. We get faster and more compact logic even though we
 -- use eight bits for the state rather than three.
@@ -434,6 +442,7 @@ begin
 		
 		-- A variable to track changes in the diagnostic outputs.
 		variable next_SIG : std_logic_vector(3 downto 0);
+		variable next_RISRV : boolean;
 						
 	begin
 
@@ -448,6 +457,7 @@ begin
 			flag_C <= false;
 			flag_S <= false;
 			flag_I <= false;
+			RISRV <= false;
 			WR <= false;
 			DS <= false;
 			SIG <= (others => '0');
@@ -473,13 +483,13 @@ begin
 			next_flag_Z := flag_Z;
 			next_flag_S := flag_S;
 			next_flag_I := flag_I;
+			next_RISRV := RISRV;
 			WR <= false;
 			DS <= false;
 			next_SIG(0) := '0';    -- Read opcode signal.
-			next_SIG(1) := SIG(1); -- Executing interrupt signal.
+			next_SIG(1) := '0';    -- Executing nop, wait, or dly.
 			next_SIG(2) := '0';    -- Jump instruction.
 			next_SIG(3) := '0';    -- Jump occurs, any decrement or increment.
-			
 			
 			-- Read the first byte of the instruction. If the instruction operates only 
 			-- upon register, with no constants involved, it will execute here in one state. 
@@ -494,7 +504,7 @@ begin
 				if IRQ and (not flag_I) then
 					opcode := sw_int;
 					opcode_saved <= sw_int;
-					next_SIG(1) := '1';
+					next_RISRV := true;
 				else
 					opcode := to_integer(unsigned(prog_data));
 					opcode_saved <= to_integer(unsigned(prog_data));
@@ -511,6 +521,9 @@ begin
 					or (opcode = add_A_n) or (opcode = adc_A_n)
 					or (opcode = sub_A_n) or (opcode = sbc_A_n) then
 					next_SIG(3) := '1';
+				end if;
+				if (opcode = nop) or (opcode = cpu_wt) or (opcode = dly_A) then
+					next_SIG(1) := '1';
 				end if;
 					
 				-- Decode the instruction.
@@ -1073,7 +1086,7 @@ begin
 						next_state := incr_pc;
 					else 
 						next_flag_I := false;
-						next_SIG(1) := '0';
+						next_RISRV := false;
 						next_state := read_opcode;
 					end if;
 				
@@ -1161,6 +1174,7 @@ begin
 			flag_Z <= next_flag_Z;
 			flag_I <= next_flag_I;
 			SIG <= next_SIG;
+			RISRV <= next_RISRV;
 		end if;
 	end process;
 
@@ -1176,14 +1190,13 @@ begin
 
 	begin		opcode_now := to_integer(unsigned(prog_data));
 		data_now := to_integer(unsigned(prog_data));
+		alu_in_x <= reg_A;
+		alu_in_y <= reg_B;
+		alu_cin  <= false;
+		alu_ctrl <= alu_cmd_and;
 		
 		if (state = read_opcode) then
 		
-			alu_in_x <= reg_A;
-			alu_in_y <= reg_B;
-			alu_cin  <= false;
-			alu_ctrl <= alu_cmd_and;
-			
 			case opcode_now is
 			
 			-- Eight-bit register increment and decrement.
@@ -1274,12 +1287,6 @@ begin
 		-- program data, so we do not use the state machine's "first_operand" variable, but
 		-- the program data directly.
 		else 
-		
-			alu_in_x <= reg_A;
-			alu_in_y <= reg_B;
-			alu_cin  <= false;
-			alu_ctrl <= alu_cmd_and;
-
 			case opcode_saved is 			
 			-- Operations with A and a constant.
 			when add_A_n | sub_A_n | adc_A_n | sbc_A_n =>
@@ -1314,6 +1321,19 @@ begin
 			end case;
 		end if;
 	end process;
+	
+	-- The ISRV Delay takes RISRV generated on the rising edge of CK
+	-- and delays until the falling edge, so as to match signals written
+	-- to registers by the CPU. The resulting ISRV signal can be used
+	-- to boost the CPU clock in the same way that a write to a BOOST
+	-- and ENFCK register can do the same.
+	ISRV_Delay : process (RESET, CK) is
+	begin
+		if (RESET = '1') then
+			ISRV <= false;
+		elsif falling_edge(CK) then
+			ISRV <= RISRV;
+		end if;
+	end process;
 end behavior;
-
 
