@@ -22,7 +22,8 @@
 -- interface created for the OSR8V3.
 
 -- [15-FEB-26] In the face of chronic instability, we resolve to constrain
--- the behavior of all registered and combinatorial logic. In the case of-- registered logic, we make sure all our case statements include "others null"
+-- the behavior of all registered and combinatorial logic. In the case of
+-- registered logic, we make sure all our case statements include "others null"
 -- to make it clear to the compiler that all registers should hold their value
 -- unless stated otherwise. in combinatorial logic, we provide default values
 -- for all signals, and include "others null" in case statements as well, so 
@@ -61,6 +62,11 @@
 -- logic vectors for opcodes and registers. Simplify the expressions for the
 -- ALU operations and use unsigned math explicitly to obtain modular behavior.
 -- These changes save 30 LUTs. The P3041 code is now 1201 LUTs.
+
+-- V4.3, [21-FEB-26] Plan to add a non-maskable interrupt. A "Kernel Request" 
+-- (KRQ) will cooperate with a "Kernel Service" (KSRV) signal to support a
+-- kernel process that carries on regardless of any code uploaded to the
+-- device via commands.
 
 library ieee;  
 use ieee.std_logic_1164.all;
