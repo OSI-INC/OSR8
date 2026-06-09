@@ -68,6 +68,8 @@
 -- kernel process that carries on regardless of any code uploaded to the
 -- device via commands.
 
+-- V4.4, [09-JUN-26] Remove SIG assignments in an effort to reduce code size.
+
 library ieee;  
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
@@ -520,7 +522,6 @@ begin
 				end if;
 				
 				-- Make some signals.
-				next_SIG(0) := '1';	
 				if (opcode = dec_A) or (opcode = dec_B) 
 					or (opcode = dec_C) or (opcode = dec_D)
 					or (opcode = inc_A) or (opcode = inc_B) 
@@ -529,10 +530,6 @@ begin
 					or (opcode = dec_IX) or (opcode = dec_IY)
 					or (opcode = add_A_n) or (opcode = adc_A_n)
 					or (opcode = sub_A_n) or (opcode = sbc_A_n) then
-					next_SIG(3) := '1';
-				end if;
-				if (opcode = nop) or (opcode = cpu_wt) or (opcode = dly_A) then
-					next_SIG(1) := '1';
 				end if;
 					
 				-- Decode the instruction.
@@ -977,7 +974,6 @@ begin
 				-- so, we will jump immediately by loading the program counter with a new 
 				-- value. Clock Cycles = 3.
 				when jp_nn | jp_z_nn | jp_nz_nn | jp_c_nn | jp_nc_nn | jp_p_nn | jp_np_nn =>
-					next_SIG(2) := '1';
 					if (opcode_saved = jp_nn) or 
 						((opcode_saved = jp_z_nn) and flag_Z) or
 						((opcode_saved = jp_nz_nn) and (not flag_Z)) or
@@ -985,7 +981,6 @@ begin
 						((opcode_saved = jp_nc_nn) and (not flag_C)) or
 						((opcode_saved = jp_p_nn) and (not flag_S)) or
 						((opcode_saved = jp_np_nn) and flag_S) then
-						next_SIG(3) := '1';
 						next_pc(pa_top downto 8) := 
 							std_logic_vector(first_operand(pa_top-8 downto 0));
 						next_pc(7 downto 0) := 
