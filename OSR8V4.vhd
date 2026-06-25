@@ -22,7 +22,7 @@
 -- interface created for the OSR8V3.
 
 -- [15-FEB-26] In the face of chronic instability, we resolve to constrain
--- the behavior of all registered and combinatorial logic. In the case of
+-- the behavior of all registered and combinatorial logic. In the case of
 -- registered logic, we make sure all our case statements include "others null"
 -- to make it clear to the compiler that all registers should hold their value
 -- unless stated otherwise. in combinatorial logic, we provide default values
@@ -521,17 +521,6 @@ begin
 					opcode_saved <= prog_data(6 downto 0);
 				end if;
 				
-				-- Make some signals.
-				if (opcode = dec_A) or (opcode = dec_B) 
-					or (opcode = dec_C) or (opcode = dec_D)
-					or (opcode = inc_A) or (opcode = inc_B) 
-					or (opcode = inc_C) or (opcode = inc_D)
-					or (opcode = inc_IX) or (opcode = inc_IY) 
-					or (opcode = dec_IX) or (opcode = dec_IY)
-					or (opcode = add_A_n) or (opcode = adc_A_n)
-					or (opcode = sub_A_n) or (opcode = sbc_A_n) then
-				end if;
-					
 				-- Decode the instruction.
 				case opcode is
 				
