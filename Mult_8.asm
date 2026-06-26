@@ -4,7 +4,7 @@
 ; Takes 200 to 300 clock cycles depending upon the operand C, an 
 ; average of 250 (50 us at 5 MHz or 7.6 ms at 32.768 kHz).
 
-multiply:
+mult_8:
 
 ; Save registers and flags on the stack.
 
@@ -31,13 +31,13 @@ pop L
 ; Shift C left and check the bit that comes out the top end, now in our
 ; carry bit. If carry is not set, jump forward to shift HL.
 
-mult_start:
+mult_8_start:
 push C
 pop A
 sla A
 push A
 pop C
-jp nc,mult_check_done
+jp nc,mult_8_check_done
 
 ; Carry bit set means we add B to HL.
 
@@ -55,9 +55,9 @@ pop H
 ; Decrement D. If zero, we have added eight times and
 ; there is no need to shift HL again, we are done.
 
-mult_check_done:
+mult_8_check_done:
 dec D
-jp z,mult_done
+jp z,mult_8_done
 
 ; Shift HL to the left, filling in bit zero with a zero. We are
 ; going repeat our addition loop.
@@ -72,12 +72,12 @@ pop A
 rl A
 push A
 pop H
-jp mult_start
+jp mult_8_start
 
 ; Multiplication is complete and the result is in HL. Move the 
 ; result to BC so that this routine affects only BC.
 
-mult_done:
+mult_8_done:
 push H
 pop B
 push L
