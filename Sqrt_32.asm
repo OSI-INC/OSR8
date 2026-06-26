@@ -67,7 +67,7 @@
 ; from our remainder. We keep going like this until we have 
 ; consumed all 32 bits of the operand, which is sixteen steps.
 ; We now have a sixteen bit root, which we transfer into the
-; bottom two bytes of the operand.
+; least signficant two bytes of the operand.
 
 sqrt_32:
 
@@ -246,10 +246,10 @@ call sub_8n
 
 jp c,sqrt_32n_dec
 
-; The trial value was less than the remainder, so we are going
-; to copy the difference into our remainder and add one to our
-; root. Right now IX is HL+3, remainder byte 0. We move up to 
-; trial byte 3.
+; The trial value was less than or equal to the remainder, so 
+; we are going to copy the difference into our remainder and add 
+; one to our root. Right now IX is HL+3, remainder byte 0. We move 
+; up to trial byte 3.
 
 inc IX  ; HL+4 = trial byte 3
 
@@ -280,27 +280,26 @@ ld (IX),A
 
 ; We are done with this run through the loop. When we have done 
 ; this sixteen times, we should have the root in HL+10 and HL+11.
+; We have IX = HL+11.
 
 sqrt_32n_dec:
 dec C
 jp nz,sqrt_32n_loop
 
-; Pop IX and decrement so it points to operand byte 1.
+; Pop the address of the operand byte zero into IY, but restore
+; on the stack.
 
-pop IX
-dec IX
+pop IY
+push IY
 
 ; Copy the root into the least significant bytes of the operand
 
-push H
-push L
-pop IY
-ld A,(IY)
-ld (IX),A
-inc IX
-inc IY
-ld A,(IY)
-ld (IX),A
+ld A,(IX)
+ld (IY),A
+dec IX
+dec IY
+ld A,(IX)
+ld (IY),A
 
 ; Move the stack pointer back down again, leaving our intermediate
 ; variables behind.
