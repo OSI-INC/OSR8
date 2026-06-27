@@ -28,8 +28,9 @@ pop H
 push A
 pop L
 
-; Shift C left and check the bit that comes out the top end, now in our
-; carry bit. If carry is not set, jump forward to shift HL.
+; Shift C left and check the bit that comes out the top end, 
+; now in our carry bit. If carry is not set, jump forward to 
+; shift HL.
 
 mult_8_start:
 push C
@@ -52,8 +53,8 @@ adc A,0
 push A
 pop H
 
-; Decrement D. If zero, we have added eight times and
-; there is no need to shift HL again, we are done.
+; Decrement D. If zero, we have tested all eight bits of C and
+; there is no need to shift HL again; we are done.
 
 mult_8_check_done:
 dec D
@@ -74,8 +75,8 @@ push A
 pop H
 jp mult_8_start
 
-; Multiplication is complete and the result is in HL. Move the 
-; result to BC so that this routine affects only BC.
+; Multiplication is complete and the result is in HL. Move the
+; result to BC.
 
 mult_8_done:
 push H

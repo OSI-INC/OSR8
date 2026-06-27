@@ -12,7 +12,7 @@
 
 left_8n:
 
-; Save A and B on the stack.
+; Save A, C, and IX on the stack.
 
 push A
 push C

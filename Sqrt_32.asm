@@ -47,12 +47,12 @@
 ; by 4^14 and the root divided by 2^14. We take our root, multiply
 ; by two, and add one, to make the amount by which the square of
 ; the root will increase if we add one to its current value. If
-; this is less than our remainder, we subtract from the remainder
-; and add one to our root. Otherwise, we do nothing, we proceed
-; to the next iteration, where we do the same thing: multiply the
-; remainder by four, add the top two bits of the operand, and
-; multiply the root by two. We are operating with the operand 
-; divided by 4^13 and the root divided by 2^13.
+; this is less than or equal to our remainder, we subtract from 
+; the remainder and add one to our root. Otherwise, we do nothing, 
+; we proceed to the next iteration, where we do the same thing: 
+; multiply the remainder by four, add the top two bits of the 
+; operand, and multiply the root by two. We are operating with 
+; the operand divided by 4^13 and the root divided by 2^13.
 ;
 ; The algorithm consumes the operand two bits at a time from the
 ; top end. We start with a remainder and root that are both zero.
@@ -62,12 +62,12 @@
 ; shift our root to the left by one, multiplying it by two. Now
 ; we take our root and multiply it by two and add one to get the
 ; amount by which our root squared will increase if we add one 
-; to it now. If this trial value is less than our remainder, we
-; go ahead and add one to our root, and we subtract the trial
-; from our remainder. We keep going like this until we have 
-; consumed all 32 bits of the operand, which is sixteen steps.
-; We now have a sixteen bit root, which we transfer into the
-; least signficant two bytes of the operand.
+; to it now. If this trial value is less than or equal to our 
+; remainder, we go ahead and add one to our root, and we subtract 
+; the trial from our remainder. We keep going like this until we 
+; have consumed all 32 bits of the operand, which is sixteen steps.
+; We now have a sixteen bit root, which we transfer into the least 
+; signficant two bytes of the operand.
 ;
 ; The algorithm makes use of three external routines: left_8n,
 ; copy_8n, and sub_8n. In each case, we call these routines 

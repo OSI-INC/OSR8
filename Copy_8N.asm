@@ -8,7 +8,7 @@
 
 copy_8n:
 
-; Save A and B on the stack.
+; Save A and C on the stack.
 
 push A
 push C
@@ -19,7 +19,7 @@ push C
 push A
 pop C
 
-; The shift left loop.
+; The copy loop.
 
 copy_8n_loop:
 ld A,(IX)

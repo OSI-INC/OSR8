@@ -10,7 +10,7 @@
 
 sub_8n:
 
-; Save A and B on the stack.
+; Save A, B, C, IX, and IY on the stack.
 
 push A
 push B
