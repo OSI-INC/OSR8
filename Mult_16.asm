@@ -154,7 +154,7 @@ pop IX
 ; Shift the multiplier right. We do not care what the carry
 ; bit is going in because these added bits will never be
 ; tested. We have to move IX to the most significant byte
-; of the multiplier before calling right_8N.
+; of the multiplier before calling right_8n.
 
 dec IX
 ld A,2
