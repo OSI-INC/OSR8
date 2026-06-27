@@ -3,10 +3,11 @@
 ; IX. Both IX and IY point to the least significant byte of
 ; both operands, and will be decremented to get to the remaining
 ; bytes of the operands. We pass N in A. The routine over-writes
-; the bytes pointed to by IY with the result of the subtraction.
-; Registers A, IX, and IY are returned unchanged. The routine
-; ignores the incoming carry flag, but sets the outgoing carry 
-; flag. The routine takes 29 + 15N clock cycles.
+; the bytes pointed to by IY with the result of the subtraction, 
+; so the effect is like (IY) := (IX) - (IY). Registers A, IX, and 
+; IY are returned unchanged. The routine ignores the incoming carry 
+; flag, but sets the outgoing carry flag. The routine takes 
+; 29 + 15N clock cycles.
 
 sub_8n:
 
