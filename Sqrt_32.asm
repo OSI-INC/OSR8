@@ -293,7 +293,6 @@ pop IY  ; HL+0 = remainder byte 3
 
 ; Copy four bytes from trial to remainder.
 
-ld A,4
 call copy_8n
 
 ; We want to set the least significant bit of our root to one. 
@@ -319,7 +318,7 @@ dec C
 jp nz,sqrt_32n_loop
 
 ; Pop the address of the operand byte zero into IY, but restore
-; on the stack.
+; on the stack, because we are going to pop IX later.
 
 pop IY
 push IY
