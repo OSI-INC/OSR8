@@ -8,6 +8,8 @@
 ; IY are returned unchanged. The routine ignores the incoming carry 
 ; flag, but sets the outgoing carry flag. The routine takes 
 ; 29 + 15N clock cycles.
+;
+; This routine is re-entrant and runs in both slow and boost modes.
 
 sub_8n:
 

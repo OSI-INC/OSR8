@@ -3,6 +3,8 @@
 ; and the sixteen-bit result will be returned in B (HI) and C (LO). 
 ; Takes 200 to 300 clock cycles depending upon the operand C, an 
 ; average of 250 (50 us at 5 MHz or 7.6 ms at 32.768 kHz).
+;
+; This routine is re-entrant and runs in both slow and boost modes.
 
 mult_8:
 

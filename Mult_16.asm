@@ -1,8 +1,8 @@
 ; ---------------------------------------------------------------
 ; Obtain the product of two sixteen-bit operands. We pass in IX and
 ; IY pointers to the least significant bytes of both operands. The
-; IY operand will play the roll of the multiplicand and the IX operand
-; will play the roll of the multiplier. The routine assumes big-endian 
+; IY operand will play the role of the multiplicand. The IX operand
+; will play the role of the multiplier. The routine assumes big-endian 
 ; byte ordering. When the calculation is complete, the routine writes
 ; the product into the operand locations, placing the least significant 
 ; bytes at the locations pointed to by IY, in big-endian order, and the 
@@ -26,6 +26,7 @@
 ; HL-4:  calling routine program counter byte 0
 ; HL-5:  calling routine program counter byte 1
 ;
+; This routine is re-entrant and runs in both slow and boost modes.
 
 mult_16:
 
@@ -58,8 +59,8 @@ push A    ; product byte 0, HL+4
 
 ; Copy the IY operand into multiplicand bytes zero and one.
 ; We use IX as the destination pointer, so we push IX, set
-; it to point to the multiplicand, copy, then pop IX back
-; again.
+; it to point to the multiplicand, copy, then restore IY
+; and pop IX back again.
 
 push IX
 push H
@@ -71,6 +72,7 @@ dec IX
 dec IY
 ld A,(IY)
 ld (IX),A
+inc IY
 pop IX
 
 ; We use D to count down from sixteen to zero.
@@ -129,7 +131,7 @@ pop IX
 
 mult_16_noadd:
 
-; Make sure IY is pointed to the least signficant byte
+; Make sure IY is pointed to the least significant byte
 ; of the multiplicand.
 
 push H
@@ -151,7 +153,7 @@ pop IX
 
 ; Shift the multiplier right. We do not care what the carry
 ; bit is going in because these added bits will never be
-; tested. We have to move IX to the most signficicant byte
+; tested. We have to move IX to the most significant byte
 ; of the multiplier before calling right_8N.
 
 dec IX

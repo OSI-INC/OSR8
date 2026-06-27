@@ -100,6 +100,7 @@
 ; big-endian byte ordering. The routine returns A, IX, and IY 
 ; unchanged.
 ;
+; This routine is re-entrant and runs in both slow and boost modes.
 
 sqrt_32:
 

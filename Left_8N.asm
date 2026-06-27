@@ -9,6 +9,8 @@
 ; at the end. Pointer IX and Register A are returned with their 
 ; original values intact. The routine takes 21 + 9N clock cycles 
 ; to complete, including the call.
+;
+; This routine is re-entrant and runs in both slow and boost modes.
 
 left_8n:
 

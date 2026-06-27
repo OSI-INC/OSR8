@@ -5,6 +5,8 @@
 ; and IY point to the locations immediately after the final byte
 ; copied. Register A remains unchanged. The routine takes 16 + 9N 
 ; clock cycles.
+;
+; This routine is re-entrant and runs in both slow and boost modes.
 
 copy_8n:
 
