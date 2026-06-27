@@ -11,7 +11,7 @@
 ;
 ; The routine uses the stack as its work space. We store in HL the 
 ; address of the least significant byte of our multiplicand, and refer 
-; to other work space address as HL+k, where k is an offset -3 to +4 as 
+; to other work space addresses as HL+k, where k is an offset -3 to +4 as 
 ; shown in the workspace table below.
 ;
 ; HL+5:  stack pointer base during operation
@@ -66,7 +66,7 @@ push H
 push L
 pop IX
 ld A,(IY)
-ld IX,A
+ld (IX),A
 dec IX
 dec IY
 ld A,(IY)
@@ -107,22 +107,34 @@ mult_16_loop:
 
 ld A,(IX)
 and A,0x01
-jp nz,mult_16_noadd
+jp z,mult_16_noadd
 
-; Use IX to point to the product and add the multiplicand.
+; Use IY to point to the product and IX to point to the
+; multiplicand. We are going to perform a four byte
+; addition that does (IY) := (IX) + (IY). We have to 
+; save the IX multiplier pointer, set IX equal to IY
+; and then move IY up to point to the product least 
+; significant byte.
 
 push IX
 push IY
 pop IX
-inc IX
-inc IX
-inc IX
-inc IX
+inc IY
+inc IY
+inc IY
+inc IY
 ld A,4
 call add_8n
 pop IX
 
 mult_16_noadd:
+
+; Make sure IY is pointed to the least signficant byte
+; of the multiplicand.
+
+push H
+push L
+pop IY
 
 ; Shift the multiplicand left, making sure we shift a zero
 ; in for the least significant bit. We have to use IX to
@@ -143,6 +155,7 @@ pop IX
 ; of the multiplier before calling right_8N.
 
 dec IX
+ld A,2
 call right_8n
 inc IX
 
@@ -154,31 +167,32 @@ jp nz,mult_16_loop
 
 ; Copy the most significant two bytes of the product to the
 ; IX locations. We have IY pointing at the least significant
-; bit of the multiplicand, so incrementing IY points to the
+; byte of the multiplicand, so incrementing IY points to the
 ; most significant product byte. We have IX pointing to the
 ; least significant multiplier byte, so decrementing points 
-; to the most significand multiplier byte.
+; to the most significant multiplier byte.
 
-inc IY
+inc IY      ; product byte 3, HL+1
 dec IX
 ld A,(IY)
 ld (IX),A
-inc IY
+inc IY      ; product byte 2, HL+2
 inc IX
 ld A,(IY)
 ld (IX),A
 
 ; Now we pop the value of the original IY, which points to 
-; the least signficant byte of the operand we used for our 
+; the least significant byte of the operand we used for our 
 ; multiplicand, into IX and decrement to point to the most
 ; significant byte of that operand. We copy the least 
 ; significant bytes of the product into the IX locations.
 
 pop IX
 dec IX
+inc IY      ; product byte 1, HL+3
 ld A,(IY)
 ld (IX),A
-inc IY
+inc IY      ; product byte 0, HL+4
 inc IX
 ld A,(IY)
 ld (IX),A
