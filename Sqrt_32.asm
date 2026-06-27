@@ -161,7 +161,7 @@ sqrt_32n_loop:
 push L
 pop A
 add A,11
-push L
+push A
 pop B
 push H
 pop A
@@ -310,8 +310,8 @@ or A,0x01
 ld (IX),A
 
 ; We are done with this run through the loop. When we have done 
-; this sixteen times, we should have the root in HL+10 and HL+11.
-; We have IX = HL+11.
+; this sixteen times, we should have the root byte 1 in HL+10 
+; root byte 0 in HL+11. 
 
 sqrt_32n_dec:
 dec C
@@ -323,6 +323,22 @@ jp nz,sqrt_32n_loop
 pop IY
 push IY
 
+; Right now IX will be IX = HL+11 if we added one to the root,
+; but otherwise it will be IX = HL+3. We need it to be HL+11
+; to point to root byte 0. So we make sure it is HL+11.
+
+push L
+pop A
+add A,11
+push A
+pop B
+push H
+pop A
+adc A,0
+push A
+push B
+pop IX
+
 ; Copy the root into the least significant bytes of the operand
 
 ld A,(IX)
@@ -331,6 +347,11 @@ dec IX
 dec IY
 ld A,(IX)
 ld (IY),A
+
+; Pop IX off the stack so it points to operand byte 0, as it did
+; at the start of the routine.
+
+pop IX
 
 ; Move the stack pointer back down again, leaving our intermediate
 ; variables behind.
