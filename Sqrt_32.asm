@@ -68,6 +68,38 @@
 ; consumed all 32 bits of the operand, which is sixteen steps.
 ; We now have a sixteen bit root, which we transfer into the
 ; least signficant two bytes of the operand.
+;
+; The algorithm makes use of three external routines: left_8n,
+; copy_8n, and sub_8n. In each case, we call these routines 
+; with A loaded with 4, so that the routines will apply
+; themselves to 4 bytes. 
+; 
+; To left_8n we must pass in IX the address of the least 
+; significant byte of the four-byte operand that is to be 
+; shifted left. The carry bit is shifted into the least 
+; significant byte and set by the bit coming out of the most 
+; significant byte. Both IX and A are unchanged. The routine
+; descends from IX to successively more significant bytes in
+; accordance with our big-endian byte ordering.
+; 
+; To copy_8n we must pass in IX the address of the first byte
+; to be copied from and in IY the address of the first byte to
+; be copied to. The routine increments IX and IY to copy in the
+; upward direction and leaves IX and IY pointing to the byte
+; above the final byte read and written respectively. Register
+; A is unchanged.
+;
+; To sub_n we must pass in IX the address of the least
+; significant byte of the operand from which we are going to
+; subtract, and in IY the address of the least significant
+; byte of the operand that we are going to subtract. The
+; routine over-writes the second operand with the result of
+; subtraction, using the same big-endian byte ordering. During
+; subtraction, the routine descents from IX and IY to 
+; successively more significant byte in accordance with our 
+; big-endian byte ordering. The routine returns A, IX, and IY 
+; unchanged.
+;
 
 sqrt_32:
 
@@ -167,7 +199,7 @@ push IX
 call left_8n
 
 ; Set IX to HL and shift from the operand into the remainder.
-; Once, complete, the remainder has been multiplied by four and
+; Once complete, the remainder has been multiplied by four and
 ; its bottom two bits are equal to the former top two bits of the
 ; operand.
 
