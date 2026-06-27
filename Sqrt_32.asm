@@ -179,7 +179,10 @@ push IX
 pop IY
 
 ; Restore IX to point to the least significant byte of the operand
-; and shift the operand by one to the left.
+; and shift the operand by one to the left. We do not bother to
+; clear the carry flag before this shift. Only the original 32 bits
+; of the operand will be shifted out by the 16 pairs of 2 shifts 
+; we perform during the course of this calculation. 
 
 pop IX
 push IX
