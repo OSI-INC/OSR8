@@ -14,8 +14,7 @@ entity main is
 		prog_data : in std_logic_vector(7 downto 0);
 		cpu_data : inout std_logic_vector(7 downto 0);
 		cpu_addr : out std_logic_vector(9 downto 0);
-		CPUDS : inout std_logic;
-		CPUWR : inout std_logic;
+		CPUWDS : inout std_logic;
 		ISRV : out std_logic;
 		CK, IRQ, RESET : in std_logic
 	);
@@ -32,7 +31,7 @@ architecture behavior of main is
 
 -- Microcontroller data in and out.
 	signal cpu_data_in, cpu_data_out : std_logic_vector(7 downto 0);
-	signal wr_boolean, ds_boolean, isrv_boolean : boolean;
+	signal wds_boolean, isrv_boolean : boolean;
 
 -- Attributes that request signals to be retained instead of distributed.
 	attribute syn_keep : boolean;
@@ -43,10 +42,9 @@ architecture behavior of main is
 	begin if v then return('1'); else return('0'); end if; end function;
 
 begin
-	cpu_data <= cpu_data_out when CPUWR else (others => 'Z');
+	cpu_data <= cpu_data_out when CPUWDS else (others => 'Z');
 	cpu_data_in <= cpu_data;
-	CPUDS <= to_std_logic(ds_boolean);
-	CPUWR <= to_std_logic(wr_boolean);
+	CPUWDS <= to_std_logic(wds_boolean);
 	ISRV <= to_std_logic(isrv_boolean);	
 
 	CPU : entity OSR8_CPU 
@@ -62,8 +60,7 @@ begin
 			cpu_data_out => cpu_data_out,
 			cpu_data_in => cpu_data_in,
 			cpu_addr => cpu_addr,
-			WR => wr_boolean,
-			DS => ds_boolean,
+			WDS => wds_boolean,
 			IRQ => (IRQ = '1'),
 			ISRV => isrv_boolean,
 			RESET => RESET,
