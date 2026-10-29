@@ -74,14 +74,15 @@ library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
--- The CPU requires seprate program and process memory. Process and program memory 
--- can be anything from 1 kByte to 64 kByte.
+-- The CPU requires seprate instruction and process memory. Process and 
+-- instruction memory can be anything from 1 kByte to 64 kByte.
 
--- The program memory read cycles must be clocked on the falling edge of CK. 
--- The program memory write cycles, if supported by peripherals, are how the
+-- The instruction memory read cycles must be clocked on the falling edge of CK. 
+-- The instruction memory write cycles, if supported by peripherals, are how the
 -- user can upload code into the embedded controller. The CPU must write to
--- a dual-port program memory on the rising edge of CK, on account of this same
--- memory being read by the CPU on the falling edge. Dual-port memory does not-- function correctly unless the write and read clocks are offset.
+-- a dual-port instruction memory on the rising edge of CK, on account of this same
+-- memory being read by the CPU on the falling edge. Dual-port memory does not
+-- function correctly unless the write and read clocks are offset.
 
 -- The process memory must be clocked on the falling edge of CK. The CPU increments 
 -- the program counter on the rising edge of CK. When it asserts WR and DS, it does
@@ -95,24 +96,20 @@ use ieee.numeric_std.all;
 -- management unit (MMU) must provide a way for the CPU to clear the IRQ signal 
 -- so it can get back to its main program.
 
--- The RESET signal will put the CPU back to program location zero and clear the 
--- stack pointer. Execution begins at location start_pc. Most likely, the program
--- will provide a three-byte un-conditional jump instruction at this location. 
--- Interrupt execution begins at interrupt_pc, where we will most likely fine
--- another jp_nn instruction. 
-
--- The stack pointer is upward-going and initialized to zero. Byte ordering for 
--- pointers is big-endian. The most significant, or HI byte is at the lower address 
--- and the lease significant, or LO byte, is at the higher address. The HI byte of 
--- the pointer will contain from one to eight neccessary bits, depending upon the 
--- memory available to the CPU. 
+-- The RESET signal will set the program counter to start_pc and the stack pointer
+-- to zero. Interrupts start at interrupt_pc. The stack pointer is upward-going and 
+-- initialized to zero. Byte ordering for pointers is big-endian. The most significant, 
+-- or HI byte is at the lower address and the lease significant, or LO byte, is at the 
+-- higher address. The HI byte of the pointer will contain from one to eight neccessary 
+-- bits, depending upon the memory available to the CPU. 
 
 entity OSR8_CPU is 
 	generic (
 		prog_cntr_len : integer := 12;
 		cpu_addr_len : integer := 11;
 		start_pc : integer := 0;
-		interrupt_pc : integer := 3	);
+		interrupt_pc : integer := 3
+	);
 	port (
 		prog_data : in std_logic_vector(7 downto 0); -- Program Data
 		prog_cntr : inout std_logic_vector(prog_cntr_len-1 downto 0); -- Program Address
@@ -426,7 +423,7 @@ begin
 -- The Central Processing Unit reads and writes from an external memory space with
 -- its address bus, cpu_addr, and its eight-bit data busses, cpu_data_in and 
 -- cpu_data_out, and its control signals CPU Data Strobe (DS), and CPU Write (WR). 
--- Its program memory is separate and private. The CPU instruction set is sufficient 
+-- Its instruction memory is separate and private. The CPU instruction set is sufficient 
 -- for all integer arithmetic, register exchanges, recursive subroutines, concurrent 
 -- processes, and efficient block moves. 
 	CPU : process (CK, RESET) is
@@ -451,7 +448,7 @@ begin
 		-- We have next_pc to set up the next program counter value.
 		variable next_pc : cpu_pc_type;
 				
-		-- A variable to track changes in the diagnostic outputs.
+		-- Next values for SIG and RISRV.
 		variable next_SIG : std_logic_vector(3 downto 0);
 		variable next_RISRV : boolean;
 						
@@ -615,18 +612,13 @@ begin
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 					
 				-- Push operations for eight-bit registers. We immediately generate 
-				-- the value SP-1 with our combinatorial decrementer. We drive SP+1 onto 
+				-- the value SP+1 with our combinatorial incrementer. We drive SP+1 onto 
 				-- the address lines on the next rising edge of the clock. On the same
-				-- rising edge, SP will decrement to SP-1, and we drive the value we
+				-- rising edge, SP will increment to SP+1, and we drive the value we
 				-- want to store in the stack onto the data lines. The value will be
 				-- stored on the falling edge of the clock in the middle of the next
 				-- clock period. By that time, the CPU will be processing the next
-				-- instruction. The single-register push instruction, and its converse,
-				-- the single-register pop instruction, together allow us to move any
-				-- register into any other register, and indeed to re-arrange registers
-				-- however we like. If we want to move B into C, C into D, and D into
-				-- B we use: push B; push C; push D; pop B; pop D; pop C to perform
-				-- the rotation in 9 clock cycles. Clock Cycles = 1.
+				-- instruction. Clock Cycles = 1.
 				when push_A | push_B | push_C | push_D | push_E | push_H | push_L | push_F => 
 					next_SP := std_logic_vector(unsigned(reg_SP)+1);
 					cpu_addr <= std_logic_vector(unsigned(reg_SP)+1);
