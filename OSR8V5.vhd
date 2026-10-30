@@ -1,4 +1,4 @@
--- Open-Source Reconfigurable Eight-Bit (OSR8) Central Processing Unit (CPU)
+-- Open-Source Reconfigurable Eight-Bit (OSR8) Microprocessor
 --
 -- Copyright (C) 2020-2026 Kevan Hashemi, Open Source Instruments Inc.
 --
@@ -104,8 +104,6 @@ constant ld_ix_A  : opcode_type := "0011000"; -- 18 ld (IX),A
 constant ld_iy_A  : opcode_type := "0011001"; -- 19 ld (IY),A
 constant ld_HL_SP : opcode_type := "0011010"; -- 1A ld HL,SP
 constant ld_SP_HL : opcode_type := "0011011"; -- 1B ld SP,HL
-constant ld_HL_PC : opcode_type := "0011100"; -- 1C ld HL,PC
-constant ld_PC_HL : opcode_type := "0011101"; -- 1D ld PC,HL
 
 constant push_A   : opcode_type := "0100000"; -- 20 push A
 constant push_B   : opcode_type := "0100001"; -- 21 push B
@@ -277,7 +275,7 @@ begin
 		-- Add X and Y with Carry
 		when alu_cmd_add =>
 			if alu_cin then 
-				result := ('0' & alu_in_x) + ('0' & alu_in_y) + "000000001";
+				result := ('0' & alu_in_x) + ('0' & alu_in_y) + 1;
 			else 
 				result := ('0' & alu_in_x) + ('0' & alu_in_y); 
 			end if;
@@ -285,7 +283,7 @@ begin
 		-- Subtract Y from X with Borrow
 		when alu_cmd_sub =>
 			if alu_cin then 
-				result := ('0' & alu_in_x) - ('0' & alu_in_y) - "000000001";
+				result := ('0' & alu_in_x) - ('0' & alu_in_y) - 1;
 			else 
 				result := ('0' & alu_in_x) - ('0' & alu_in_y); 
 			end if;
@@ -1033,7 +1031,8 @@ begin
 				next_pc := std_logic_vector(unsigned(prog_cntr)+1);	
 			end if;
 			
-			-- Assert the new state, program counter, and register values for the next clock cycle.
+			-- Assert the new state, program counter, and register values for the next clock 
+			-- cycle.
 			prog_cntr <= next_pc; 
 			state <= next_state;					
 			reg_A <= next_A;
