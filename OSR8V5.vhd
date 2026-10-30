@@ -8,7 +8,7 @@
 -- of the License, or (at your option) any later version.
 --
 -- This program is distributed in the hope that it will be useful,
--- but WITHOUT ANY WARRANTY; without even the implied warrantyf of
+-- but WITHOUT ANY WARRANTY; without even the implied warranty of
 -- MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 -- GNU General Public License for more details.
 --
@@ -517,25 +517,6 @@ begin
 					next_state := read_opcode;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 
-				-- Program Counter load to and from HL. We use H for the upper bits of 
-				-- PC. These instructions allow us, in principle, to implement relative 
-				-- jumps, by copying the program counter, adding to it, then loading the 
-				-- program counter with the result, as in: ld HL,PC; push L; pop A; 
-				-- add A,n; push A; pop L; push H; pop A; adc A,n; push A; pop H; 
-				-- ld PC,HL; for a total of 16 clock cycles compared to 3 for an
-				-- absolute, unconditional jump. Clock Cycles = 1.
-				when ld_HL_PC =>
-					next_H(7 downto pa_top-7) := (others => '0');
-					next_H(pa_top-8 downto 0) := unsigned(prog_cntr(pa_top downto 8));
-					next_L := unsigned(prog_cntr(7 downto 0));
-					next_state := read_opcode;
-					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
-				when ld_PC_HL =>
-					next_pc(pa_top downto 8) := std_logic_vector(reg_H(pa_top-8 downto 0));
-					next_pc(7 downto 0) := std_logic_vector(reg_L);
-					next_state := read_opcode;
-					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
-					
 				-- Push operations for eight-bit registers. We immediately generate 
 				-- the value SP+1 with our combinatorial incrementer. We drive SP+1 onto 
 				-- the address lines on the next rising edge of the clock. On the same
