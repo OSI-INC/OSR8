@@ -593,12 +593,9 @@ begin
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 
 				-- Program Counter load to and from HL. We use H for the upper bits of 
-				-- PC. These instructions allow us, in principle, to implement relative 
-				-- jumps, by copying the program counter, adding to it, then loading the 
-				-- program counter with the result, as in: ld HL,PC; push L; pop A; 
-				-- add A,n; push A; pop L; push H; pop A; adc A,n; push A; pop H; 
-				-- ld PC,HL; for a total of 16 clock cycles compared to 3 for an
-				-- absolute, unconditional jump. Clock Cycles = 1.
+				-- PC. These instructions allow us, in principle, to run code residing
+				-- in process memory addresses, as we would when spawning new 
+				-- processes or loading dynamic libraries. Clock Cycles = 1.
 				when ld_HL_PC =>
 					next_H(7 downto pa_top-7) := (others => '0');
 					next_H(pa_top-8 downto 0) := unsigned(prog_cntr(pa_top downto 8));

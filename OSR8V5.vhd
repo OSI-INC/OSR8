@@ -16,7 +16,11 @@
 -- along with this program; if not, write to the Free Software
 -- Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
--- V5.1, [29-OCT-26] Based on V4.4, exploring ways to reduce size.
+-- V5.1, [29-OCT-26] Making the RAM reads asynchronous, which we do by
+-- eliminating the DS signal and keeping only WR for writes to process
+-- memory, reduces size by 30 LUTs. Removing "ld HL,PC" and "ld PC,HL" 
+-- saves 10 LUTs, which we feel does not justify their removal, so we 
+-- leave them in.
 
 library ieee;  
 use ieee.std_logic_1164.all;
@@ -38,18 +42,17 @@ use ieee.numeric_std.all;
 
 entity OSR8_CPU is 
 	generic (
-		prog_cntr_len : integer := 12;
-		cpu_addr_len : integer := 11;
-		start_pc : integer := 0;
-		interrupt_pc : integer := 3
-	);
+		prog_cntr_len : positive := 12;
+		cpu_addr_len : positive := 11;
+		start_pc : natural := 0;
+		interrupt_pc : natural := 3	);
 	port (
 		prog_data : in std_logic_vector(7 downto 0); -- Program Data
 		prog_cntr : inout std_logic_vector(prog_cntr_len-1 downto 0); -- Program Address
 		cpu_data_out : out std_logic_vector(7 downto 0); -- Outgoing CPU Data Bus
 		cpu_data_in : in std_logic_vector(7 downto 0); -- Incoming CPU Data Bus
 		cpu_addr : out std_logic_vector(cpu_addr_len-1 downto 0); -- Outgoing CPU Address Bus
-		WDS : out boolean; -- Write Cycle
+		WR : out boolean; -- Write Cycle
 		IRQ : in boolean; -- Interrupt Request
 		ISRV : out boolean; -- Interrupt Service
 		SIG : out std_logic_vector(3 downto 0); -- Signals for Debugging
@@ -68,10 +71,14 @@ architecture behavior of OSR8_CPU is
 -- the hexadecimal byte value by which this operation will be invoked as a 
 -- program is being executed, and the instruction pneumonic that shows what
 -- the instruction does, and how it is to be written in the OSR8 assembly 
--- language. We use "n" for an eight-bit constant, "nn" for a sixteen-bit
--- constant, "(nn)" for the location with address nn, "(IX)" for the location
--- with address given by index register IX, "jp nz" for jump if not zero,
--- "ld" for "load", and so on. Our syntax for assembler code follows that
+-- language. We use "n" for a process memory single-location constant. We
+-- use "nn" for a memory address constant. We use either "(nn)" for the
+-- contents of location nn in process memory. In our constant names, we do
+-- not write "(nn)" because parentheses are generally not allowed in the
+-- contant naming strings, so we write "m" instead. We write "(IX)" for 
+-- the contents of location IX in process memory. We write "jp nz" for jump 
+-- if not zero, "ld A,(nn)" for "load register A with the contents of process
+-- memory address nn", and so on. Our syntax for assembler code follows that
 -- of the venerable Z80 microprocessors.
 
 subtype opcode_type is std_logic_vector(6 downto 0);
@@ -96,14 +103,16 @@ constant ld_A_n   : opcode_type := "0010000"; -- 10 ld A,n
 constant ld_IX_nn : opcode_type := "0010001"; -- 11 ld IX,nn
 constant ld_IY_nn : opcode_type := "0010010"; -- 12 ld IY,nn
 constant ld_HL_nn : opcode_type := "0010011"; -- 13 ld HL,nn
-constant ld_A_mm  : opcode_type := "0010100"; -- 14 ld A,(nn)
-constant ld_mm_A  : opcode_type := "0010101"; -- 15 ld (nn),A
+constant ld_A_m   : opcode_type := "0010100"; -- 14 ld A,(nn)
+constant ld_m_A   : opcode_type := "0010101"; -- 15 ld (nn),A
 constant ld_A_ix  : opcode_type := "0010110"; -- 16 ld A,(IX)
 constant ld_A_iy  : opcode_type := "0010111"; -- 17 ld A,(IY)
 constant ld_ix_A  : opcode_type := "0011000"; -- 18 ld (IX),A
 constant ld_iy_A  : opcode_type := "0011001"; -- 19 ld (IY),A
 constant ld_HL_SP : opcode_type := "0011010"; -- 1A ld HL,SP
 constant ld_SP_HL : opcode_type := "0011011"; -- 1B ld SP,HL
+constant ld_HL_PC : opcode_type := "0011100"; -- 1C ld HL,PC
+constant ld_PC_HL : opcode_type := "0011101"; -- 1D ld PC,HL
 
 constant push_A   : opcode_type := "0100000"; -- 20 push A
 constant push_B   : opcode_type := "0100001"; -- 21 push B
@@ -352,7 +361,7 @@ begin
 
 -- The Central Processing Unit reads and writes from an external memory space with
 -- its address bus, cpu_addr, and its eight-bit data busses, cpu_data_in and 
--- cpu_data_out, and its control signal Write Data Strobe (WDS).
+-- cpu_data_out, and its control signal Write (WR).
 	CPU : process (CK, RESET) is
 	
 		-- The next_r variables we use to set up the value of A that will be asserted 
@@ -393,7 +402,7 @@ begin
 			flag_S <= false;
 			flag_I <= false;
 			RISRV <= false;
-			WDS <= false;
+			WR <= false;
 			SIG <= (others => '0');
 			
 		-- Otherwise we repond to the rising edge of CK.
@@ -418,7 +427,7 @@ begin
 			next_flag_S := flag_S;
 			next_flag_I := flag_I;
 			next_RISRV := RISRV;
-			WDS <= false;
+			WR <= false;
 			next_SIG(0) := '0';    -- Read opcode signal.
 			next_SIG(1) := '0';    -- Executing nop, wait, or dly.
 			next_SIG(2) := '0';    -- Jump instruction.
@@ -483,7 +492,7 @@ begin
 				when sw_int =>
 					next_SP := std_logic_vector(unsigned(reg_SP)+1);
 					cpu_addr <= std_logic_vector(unsigned(reg_SP)+1);
-					WDS <= true;
+					WR <= true;
 					cpu_data_out <= (others => '0');
 					cpu_data_out(pa_top-8 downto 0) <= prog_cntr(pa_top downto 8);
 					next_flag_I := true;
@@ -497,7 +506,7 @@ begin
 				when ret_cll| ret_int =>
 					next_SP := std_logic_vector(unsigned(reg_SP)-1);
 					cpu_addr <= reg_SP;
-					WDS <= false;
+					WR <= false;
 					next_state := read_first_byte;
 					next_pc := prog_cntr;
 			
@@ -515,6 +524,22 @@ begin
 					next_state := read_opcode;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 
+				-- Program Counter load to and from HL. We use H for the upper bits of 
+				-- PC. These instructions allow us, in principle, to run code residing
+				-- in process memory addresses, as we would when spawning new 
+				-- processes or loading dynamic libraries. Clock Cycles = 1.
+				when ld_HL_PC =>
+					next_H(7 downto pa_top-7) := (others => '0');
+					next_H(pa_top-8 downto 0) := unsigned(prog_cntr(pa_top downto 8));
+					next_L := unsigned(prog_cntr(7 downto 0));
+					next_state := read_opcode;
+					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
+				when ld_PC_HL =>
+					next_pc(pa_top downto 8) := std_logic_vector(reg_H(pa_top-8 downto 0));
+					next_pc(7 downto 0) := std_logic_vector(reg_L);
+					next_state := read_opcode;
+					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
+					
 				-- Push operations for eight-bit registers. We immediately generate 
 				-- the value SP+1 with our combinatorial incrementer. We drive SP+1 onto 
 				-- the address lines on the next rising edge of the clock. On the same
@@ -526,7 +551,7 @@ begin
 				when push_A | push_B | push_C | push_D | push_E | push_H | push_L | push_F => 
 					next_SP := std_logic_vector(unsigned(reg_SP)+1);
 					cpu_addr <= std_logic_vector(unsigned(reg_SP)+1);
-					WDS <= true;
+					WR <= true;
 					case opcode is
 						when push_A => cpu_data_out <= std_logic_vector(reg_A);
 						when push_B => cpu_data_out <= std_logic_vector(reg_B);
@@ -551,7 +576,7 @@ begin
 				when push_IX | push_IY => 
 					next_SP := std_logic_vector(unsigned(reg_SP)+1);
 					cpu_addr <= std_logic_vector(unsigned(reg_SP)+1);
-					WDS <= true;
+					WR <= true;
 					cpu_data_out <= (others => '0');
 					case opcode is
 						when push_IX => cpu_data_out(ca_top-8 downto 0) <= reg_IX(ca_top downto 8);
@@ -566,14 +591,14 @@ begin
 				-- edge of the clock, we drive SP onto the address lines, and at the same
 				-- time increment SP to SP+1. But is is SP that remains on the address lines,
 				-- even as the stack pointer register itself increments. On that same rising 
-				-- edge we unassert WDS. The stack will respond on the next falling edge by 
+				-- edge we unassert WR. The stack will respond on the next falling edge by 
 				-- driving a byte onto the data lines. We read the byte on the rising edge 
 				-- after that, so we need another clock cycle to complete the pop. We move 
 				-- to read_first_byte to perform the read. Clock Cycles = 2.
 				when pop_A | pop_B | pop_C | pop_D | pop_E | pop_H | pop_L | pop_F =>
 					next_SP := std_logic_vector(unsigned(reg_SP)-1);
 					cpu_addr <= reg_SP;
-					WDS <= false;
+					WR <= false;
 					next_state := read_first_byte;	
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 					
@@ -583,42 +608,42 @@ begin
 				when pop_IX | pop_IY =>
 					next_SP := std_logic_vector(unsigned(reg_SP)-1);
 					cpu_addr <= reg_SP;
-					WDS <= false;
+					WR <= false;
 					next_state := read_first_byte;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 					
 				-- Eight-bit indirect write operations with index register. We drive the index
 				-- register onto the address lines on the next rising edge of the clock and
-				-- assert WDS. We drive the value of A onto the data lines. On the falling
+				-- assert WR. We drive the value of A onto the data lines. On the falling
 				-- edge of the clock in the middle of the next clock cycle, the target location
 				-- will be written. By that time, we will be processing the next instruction.
 				-- Clock Cycles = 1.
 				when ld_ix_A =>
 					cpu_data_out <= std_logic_vector(reg_A);
 					cpu_addr <= reg_IX;
-					WDS <= true;
+					WR <= true;
 					next_state := read_opcode;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 				when ld_iy_A =>
 					cpu_data_out <= std_logic_vector(reg_A);
 					cpu_addr <= reg_IY;
-					WDS <= true;
+					WR <= true;
 					next_state := read_opcode;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 					
 				-- Eight-bit indirect read operations with index register. We drive the index
 				-- register onto the address lines on the next rising edge of the clock and
-				-- unassert WDS. On the falling edge in the middle of the next clock cycle, 
+				-- unassert WR. On the falling edge in the middle of the next clock cycle, 
 				-- the target location's value will be driven onto the data bus. We read that 
 				-- value in a subsequent state, read_first_byte. Clock Cycles = 2.
 				when ld_A_ix =>
 					cpu_addr <= reg_IX;
-					WDS <= false;
+					WR <= false;
 					next_state := read_first_byte;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 				when ld_A_iy =>
 					cpu_addr <= reg_IY;
-					WDS <= false;
+					WR <= false;
 					next_state := read_first_byte;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 					
@@ -784,28 +809,28 @@ begin
 				-- operand, being the one we loaded from a lower address, is the HI byte
 				-- of the address, and the second operand is the LO byte. We drive the 
 				-- address onto the address lines on the next rising edge, along with 
-				-- not WDS. We read the value of the target location in the next
+				-- not WR. We read the value of the target location in the next
 				-- clock cycle, in the read_first_byte state. Clock Cycles = 4.
-				when ld_A_mm =>
+				when ld_A_m =>
 					cpu_addr(ca_top downto 8) <= 
 						std_logic_vector(first_operand(ca_top-8 downto 0));
 					cpu_addr(7 downto 0) <= 
 						std_logic_vector(second_operand);
-					WDS <= false;
+					WR <= false;
 					next_state := read_first_byte;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 					
 				-- Indirect eight-bit write operations using operands as address. Same as
-				-- the read cycle, except we assert WDS on the next rising edge, and drive
+				-- the read cycle, except we assert WR on the next rising edge, and drive
 				-- the data lines with the value of A, and then leave the targe location
 				-- to be written in the middle of the next cycle, while we get on with
 				-- decoding the next instruction. Clock Cycles = 3.
-				when ld_mm_A =>
+				when ld_m_A =>
 					cpu_addr(ca_top downto 8) <= 
 						std_logic_vector(first_operand(ca_top-8 downto 0));
 					cpu_addr(7 downto 0) <= std_logic_vector(second_operand);
 					cpu_data_out <= std_logic_vector(reg_A);
-					WDS <= true;
+					WR <= true;
 					next_state := read_opcode;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 					
@@ -838,7 +863,7 @@ begin
 				when call_nn =>
 					next_SP := std_logic_vector(unsigned(reg_SP)+1);
 					cpu_addr <= std_logic_vector(unsigned(reg_SP)+1);
-					WDS <= true;
+					WR <= true;
 					cpu_data_out <= (others => '0');
 					cpu_data_out(pa_top-8 downto 0) <= prog_cntr(pa_top downto 8);
 					next_state := write_second_byte;
@@ -879,7 +904,7 @@ begin
 				-- through this clock cycle, the target byte will be driven onto the data
 				-- bus. On the next rising edge, even as we start decoding the next instruction,
 				-- we will load the new value into the accumulator. Clock cycles = 2.
-				when ld_A_mm | ld_A_ix | ld_A_iy => 
+				when ld_A_m | ld_A_ix | ld_A_iy => 
 					next_A := unsigned(cpu_data_in);
 					next_pc := prog_cntr;
 					next_state := read_opcode;
@@ -911,7 +936,7 @@ begin
 				when pop_IX | pop_IY =>
 					next_SP := std_logic_vector(unsigned(reg_SP)-1);
 					cpu_addr <= reg_SP;
-					WDS <= false;
+					WR <= false;
 					case opcode_saved is
 						when pop_IX => next_IX(7 downto 0) := cpu_data_in(7 downto 0);
 						when pop_IY => next_IY(7 downto 0) := cpu_data_in(7 downto 0);
@@ -925,7 +950,7 @@ begin
 				when ret_cll | ret_int =>
 					next_SP := std_logic_vector(unsigned(reg_SP)-1);
 					cpu_addr <= reg_SP;
-					WDS <= false;
+					WR <= false;
 					next_pc := (others => '0');
 					next_pc(7 downto 0) := cpu_data_in;
 					next_state := read_second_byte;	
@@ -989,7 +1014,7 @@ begin
 				when push_IX | push_IY =>
 					next_SP := std_logic_vector(unsigned(reg_SP)+1);
 					cpu_addr <= std_logic_vector(unsigned(reg_SP)+1);
-					WDS <= true;
+					WR <= true;
 					case opcode_saved is
 						when push_IX => cpu_data_out(7 downto 0) <= reg_IX(7 downto 0);
 						when push_IY => cpu_data_out(7 downto 0) <= reg_IY(7 downto 0);
@@ -1005,7 +1030,7 @@ begin
 				when call_nn | sw_int =>
 					next_SP := std_logic_vector(unsigned(reg_SP)+1);
 					cpu_addr <= std_logic_vector(unsigned(reg_SP)+1);
-					WDS <= true;
+					WR <= true;
 					cpu_data_out <= prog_cntr(7 downto 0);
 					if (opcode_saved = call_nn) then
 						next_pc(pa_top downto 8) := 

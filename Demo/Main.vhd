@@ -1,7 +1,7 @@
 -- RISC Microcontroller, Five-Bit Opcodes (RMC5) Demonstration Program
 
--- V1.0 [28-OCT-26] The microcontroller data bus and control signals are connected to 
--- input-output pins, LCMXO2-256ZE in TQFP-100.
+-- V1.0 [28-OCT-26] The microcontroller data buses, address bus, and 
+-- control signals are connected to input-output pins.
 
 
 library ieee;  
@@ -9,12 +9,18 @@ use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 entity main is 
+	generic (
+		prog_cntr_len : positive := 12;
+		cpu_addr_len : positive := 11;
+		start_pc : natural := 0;
+		interrupt_pc : natural := 3	);
 	port (
-		prog_cntr : out std_logic_vector(11 downto 0);
+		prog_cntr : out std_logic_vector(prog_cntr_len-1 downto 0);
 		prog_data : in std_logic_vector(7 downto 0);
-		cpu_data : inout std_logic_vector(7 downto 0);
-		cpu_addr : out std_logic_vector(9 downto 0);
-		CPUWDS : inout std_logic;
+		cpu_addr : out std_logic_vector(cpu_addr_len-1 downto 0);
+		cpu_data_out : out std_logic_vector(7 downto 0);
+		cpu_data_in : in std_logic_vector(7 downto 0);
+		WR : inout std_logic;
 		ISRV : out std_logic;
 		CK, IRQ, RESET : in std_logic
 	);
@@ -22,16 +28,8 @@ entity main is
 
 architecture behavior of main is
 
--- Configuration of OSR8 CPU.
-	constant prog_cntr_len : integer := 12;
-	constant cpu_addr_len : integer := 10;
-	constant start_pc : integer := 0;
-	constant interrupt_pc : integer := 3;
-	constant ram_addr_len : integer := 10;
-
 -- Microcontroller data in and out.
-	signal cpu_data_in, cpu_data_out : std_logic_vector(7 downto 0);
-	signal wds_boolean, isrv_boolean : boolean;
+	signal wr_boolean, isrv_boolean : boolean;
 
 -- Attributes that request signals to be retained instead of distributed.
 	attribute syn_keep : boolean;
@@ -42,9 +40,7 @@ architecture behavior of main is
 	begin if v then return('1'); else return('0'); end if; end function;
 
 begin
-	cpu_data <= cpu_data_out when CPUWDS else (others => 'Z');
-	cpu_data_in <= cpu_data;
-	CPUWDS <= to_std_logic(wds_boolean);
+	WR <= to_std_logic(wr_boolean);
 	ISRV <= to_std_logic(isrv_boolean);	
 
 	CPU : entity OSR8_CPU 
@@ -60,7 +56,7 @@ begin
 			cpu_data_out => cpu_data_out,
 			cpu_data_in => cpu_data_in,
 			cpu_addr => cpu_addr,
-			WDS => wds_boolean,
+			WR => wr_boolean,
 			IRQ => (IRQ = '1'),
 			ISRV => isrv_boolean,
 			RESET => RESET,
