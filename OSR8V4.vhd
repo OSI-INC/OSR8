@@ -16,6 +16,47 @@
 -- along with this program; if not, write to the Free Software
 -- Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
+-- The OSR8V4 requires separate instruction and process memory. Process and 
+-- instruction memory can be anything from 1 kByte to 64 kByte.
+
+-- In the OSR8V4, the instruction memory read cycles must be clocked on the 
+-- falling edge of CK. The Embedded Ram Blocks (ERBs) provided by the LCMXO2
+-- series of logic chips upon which the OSR8 has been developed are synchronous,
+-- so they must be read out on one edge of the clock or the other, and the OSR8V4
+-- is designed to read on the falling edge. The instruction memory write cycles, 
+-- if supported by peripherals, are how the user can upload code into the embedded 
+-- controller. The CPU must write to a dual-port instruction memory on the rising 
+-- edge of CK, on account of this same memory being read by the CPU on the falling 
+-- edge. Dual-port memory does not function correctly unless the write and read 
+-- clocks are offset.
+
+-- The process memory must also be clocked on the falling edge of CK, for the same
+-- reasons the instruction memory must be clocked on the falling edge. The CPU 
+-- increments the program counter on the rising edge of CK. When it asserts WR 
+-- and DS, it does so for one CK cycle, starting and ending on the rising edges. 
+-- These signals are always valid before and after the falling edge of CK. On a 
+-- read cycle, the CPU expects data to be ready before the next rising edge of 
+-- CK after it asserts DS. On a write cycle, the CPU expects the write to take 
+-- place on the falling edge of CK after it asserts DS and WR. 
+
+-- The IRQ signal is the interrupt request line from external logic. The memory 
+-- management unit (MMU) must provide a way for the CPU to clear the IRQ signal 
+-- so it can get back to its main program. The ISRV output indicates that the 
+-- processor is executing an interrupt. This output can be used to move the 
+-- CPU into boost mode on a faster clock to service the interrupt. The ISRV 
+-- line is clocked on the falling edge of CK so that the clock selecting state
+-- machine can be sure that when ISRV goes HI, CK is LO.
+
+-- The RESET signal will set the program counter to start_pc and the stack 
+-- pointer to zero. Interrupts start at interrupt_pc. The stack pointer is 
+-- upward-going and initialized to zero. The stack resides somewhere in 
+-- process memory, by default at the bottom, but it can be moved elsewher
+-- by the processor's "ld SP,HL" instruction. Byte ordering for pointers is 
+-- big-endian. The most significant, or HI byte is at the lower address 
+-- and the lease significant, or LO byte, is at the higher address. The HI 
+-- byte of the pointer will contain from one to eight neccessary bits, 
+-- depending upon the memory available to the CPU. 
+
 -- V4.1, [10-FEB-26] Eliminate the intermediate variable prog_cntr, change all
 -- occurances of prog_addr to prog_cntr. These changes are cosmetic only,
 -- but also have the effect of making the OSR8V4 incompatible with a port
@@ -73,35 +114,6 @@
 library ieee;  
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
-
--- The CPU requires seprate instruction and process memory. Process and 
--- instruction memory can be anything from 1 kByte to 64 kByte.
-
--- The instruction memory read cycles must be clocked on the falling edge of CK. 
--- The instruction memory write cycles, if supported by peripherals, are how the
--- user can upload code into the embedded controller. The CPU must write to
--- a dual-port instruction memory on the rising edge of CK, on account of this same
--- memory being read by the CPU on the falling edge. Dual-port memory does not
--- function correctly unless the write and read clocks are offset.
-
--- The process memory must be clocked on the falling edge of CK. The CPU increments 
--- the program counter on the rising edge of CK. When it asserts WR and DS, it does
--- so for one CK cycle, starting and ending on the rising edges. These signals are
--- always valid before and after the falling edge of CK. On a read cycle, the CPU 
--- expects data to be ready before the next rising edge of CK after it asserts DS. On
--- a write cycle, the CPU expects the write to take place on the falling edge of
--- CK after it asserts DS and WR. 
-
--- The IRQ signal is the interrupt request line from external logic. The memory 
--- management unit (MMU) must provide a way for the CPU to clear the IRQ signal 
--- so it can get back to its main program.
-
--- The RESET signal will set the program counter to start_pc and the stack pointer
--- to zero. Interrupts start at interrupt_pc. The stack pointer is upward-going and 
--- initialized to zero. Byte ordering for pointers is big-endian. The most significant, 
--- or HI byte is at the lower address and the lease significant, or LO byte, is at the 
--- higher address. The HI byte of the pointer will contain from one to eight neccessary 
--- bits, depending upon the memory available to the CPU. 
 
 entity OSR8_CPU is 
 	generic (

@@ -11,7 +11,7 @@ use ieee.numeric_std.all;
 entity main is 
 	generic (
 		prog_cntr_len : positive := 12;
-		cpu_addr_len : positive := 11;
+		cpu_addr_len : positive := 13;
 		start_pc : natural := 0;
 		interrupt_pc : natural := 3	);
 	port (
