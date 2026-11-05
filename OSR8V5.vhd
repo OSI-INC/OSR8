@@ -16,29 +16,55 @@
 -- along with this program; if not, write to the Free Software
 -- Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
+-- The OSR8V5 requires separate instruction and process memory. Process and 
+-- instruction memory can be anything from 1 kByte to 64 kByte.
+
+-- In the OSR8V5, the instruction memory read cycles must be clocked on the 
+-- rising edge of CK. Instruction memory write cycles, if supported by the
+-- peripheral logic, are the means by which the user uploads code into the embedded 
+-- controller. The instruction memory must be dual-port so that the CPU can 
+-- write to the memory even while it is reading instructions from the memory.
+-- But writes must take place on the falling edge of CK so they do not conflict
+-- with reads on the rising edge. The dual-port memory provided by Embedded
+-- Block RAM (EBR) does not function correctly unless the write and read 
+-- clocks are offset. The process memory must be clocked on the rising edge of-- CK as well, both for reading and writing. 
+
+-- The CPU increments the program counter on the rising edge of CK. The next 
+-- program counter is calculated from the current instruction and presented 
+-- to the instruction memory, ready for the next rising edge. When the CPU-- asserts Read Data Strobe (DS), it does so before the rising edge of CK 
+-- on a read cycle. It asserts Write Data Strobe (WDS) in the same way before
+-- the rising edge of CK on a write cycle.
+
+-- The IRQ signal is the interrupt request line from external logic. The memory 
+-- management unit (MMU) must provide a way for the CPU to clear the IRQ signal 
+-- so it can get back to its main program. The ISRV output indicates that the 
+-- processor is executing an interrupt. This output can be used to move the 
+-- CPU into boost mode on a faster clock to service the interrupt. The ISRV 
+-- line is clocked on the falling edge of CK so that the clock selecting state
+-- machine can be sure that when ISRV goes HI, CK is LO.
+
+-- The RESET signal will set the program counter to start_pc and the stack 
+-- pointer to zero. Interrupts start at interrupt_pc. The stack pointer is 
+-- upward-going and initialized to zero. The stack resides somewhere in 
+-- process memory, by default at the bottom, but it can be moved elsewher
+-- by the processor's "ld SP,HL" instruction. Byte ordering for pointers is 
+-- big-endian. The most significant, or HI byte is at the lower address 
+-- and the lease significant, or LO byte, is at the higher address. The HI 
+-- byte of the pointer will contain from one to eight neccessary bits, 
+-- depending upon the memory available to the CPU. 
+
 -- V5.1, [29-OCT-26] Making the RAM reads asynchronous, which we do by
--- eliminating the DS signal and keeping only WR for writes to process
+-- eliminating the DS signal and keeping only WDS for writes to process
 -- memory, reduces size by 30 LUTs. Removing "ld HL,PC" and "ld PC,HL" 
 -- saves 10 LUTs, which we feel does not justify their removal, so we 
 -- leave them in.
+
+-- [04-NOV-26] Move to WDS and RDS.
 
 library ieee;  
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
--- The CPU requires seprate instruction and process memory. Process and 
--- instruction memory can be anything from 1 kByte to 64 kByte.
-
--- The IRQ signal is the interrupt request line from external logic. The memory 
--- management unit (MMU) must provide a way for the CPU to clear the IRQ signal 
--- so it can get back to its main program.
-
--- The RESET signal will set the program counter to start_pc and the stack pointer
--- to zero. Interrupts start at interrupt_pc. The stack pointer is upward-going and 
--- initialized to zero. Byte ordering for pointers is big-endian. The most significant, 
--- or HI byte is at the lower address and the lease significant, or LO byte, is at the 
--- higher address. The HI byte of the pointer will contain from one to eight neccessary 
--- bits, depending upon the memory available to the CPU. 
 
 entity OSR8_CPU is 
 	generic (
@@ -52,7 +78,7 @@ entity OSR8_CPU is
 		cpu_data_out : out std_logic_vector(7 downto 0); -- Outgoing CPU Data Bus
 		cpu_data_in : in std_logic_vector(7 downto 0); -- Incoming CPU Data Bus
 		cpu_addr : out std_logic_vector(cpu_addr_len-1 downto 0); -- Outgoing CPU Address Bus
-		WR : out boolean; -- Write Cycle
+		WDS, RDS : out boolean; -- Write Cycle
 		IRQ : in boolean; -- Interrupt Request
 		ISRV : out boolean; -- Interrupt Service
 		SIG : out std_logic_vector(3 downto 0); -- Signals for Debugging
@@ -361,7 +387,7 @@ begin
 
 -- The Central Processing Unit reads and writes from an external memory space with
 -- its address bus, cpu_addr, and its eight-bit data busses, cpu_data_in and 
--- cpu_data_out, and its control signal Write (WR).
+-- cpu_data_out, and its control signals Write Data Strobe (WDS) and Read Data-- Strobe (RDS).
 	CPU : process (CK, RESET) is
 	
 		-- The next_r variables we use to set up the value of A that will be asserted 
@@ -402,7 +428,8 @@ begin
 			flag_S <= false;
 			flag_I <= false;
 			RISRV <= false;
-			WR <= false;
+			WDS <= false;
+			RDS <= false;
 			SIG <= (others => '0');
 			
 		-- Otherwise we repond to the rising edge of CK.
@@ -427,7 +454,8 @@ begin
 			next_flag_S := flag_S;
 			next_flag_I := flag_I;
 			next_RISRV := RISRV;
-			WR <= false;
+			WDS <= false;
+			RDS <= false;
 			next_SIG(0) := '0';    -- Read opcode signal.
 			next_SIG(1) := '0';    -- Executing nop, wait, or dly.
 			next_SIG(2) := '0';    -- Jump instruction.
@@ -492,7 +520,7 @@ begin
 				when sw_int =>
 					next_SP := std_logic_vector(unsigned(reg_SP)+1);
 					cpu_addr <= std_logic_vector(unsigned(reg_SP)+1);
-					WR <= true;
+					WDS <= true;
 					cpu_data_out <= (others => '0');
 					cpu_data_out(pa_top-8 downto 0) <= prog_cntr(pa_top downto 8);
 					next_flag_I := true;
@@ -506,7 +534,7 @@ begin
 				when ret_cll| ret_int =>
 					next_SP := std_logic_vector(unsigned(reg_SP)-1);
 					cpu_addr <= reg_SP;
-					WR <= false;
+					RDS <= true;
 					next_state := read_first_byte;
 					next_pc := prog_cntr;
 			
@@ -551,7 +579,7 @@ begin
 				when push_A | push_B | push_C | push_D | push_E | push_H | push_L | push_F => 
 					next_SP := std_logic_vector(unsigned(reg_SP)+1);
 					cpu_addr <= std_logic_vector(unsigned(reg_SP)+1);
-					WR <= true;
+					WDS <= true;
 					case opcode is
 						when push_A => cpu_data_out <= std_logic_vector(reg_A);
 						when push_B => cpu_data_out <= std_logic_vector(reg_B);
@@ -576,7 +604,7 @@ begin
 				when push_IX | push_IY => 
 					next_SP := std_logic_vector(unsigned(reg_SP)+1);
 					cpu_addr <= std_logic_vector(unsigned(reg_SP)+1);
-					WR <= true;
+					WDS <= true;
 					cpu_data_out <= (others => '0');
 					case opcode is
 						when push_IX => cpu_data_out(ca_top-8 downto 0) <= reg_IX(ca_top downto 8);
@@ -591,14 +619,14 @@ begin
 				-- edge of the clock, we drive SP onto the address lines, and at the same
 				-- time increment SP to SP+1. But is is SP that remains on the address lines,
 				-- even as the stack pointer register itself increments. On that same rising 
-				-- edge we unassert WR. The stack will respond on the next falling edge by 
+				-- edge we unassert WDS. The stack will respond on the next falling edge by 
 				-- driving a byte onto the data lines. We read the byte on the rising edge 
 				-- after that, so we need another clock cycle to complete the pop. We move 
 				-- to read_first_byte to perform the read. Clock Cycles = 2.
 				when pop_A | pop_B | pop_C | pop_D | pop_E | pop_H | pop_L | pop_F =>
 					next_SP := std_logic_vector(unsigned(reg_SP)-1);
 					cpu_addr <= reg_SP;
-					WR <= false;
+					RDS <= true;
 					next_state := read_first_byte;	
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 					
@@ -608,42 +636,42 @@ begin
 				when pop_IX | pop_IY =>
 					next_SP := std_logic_vector(unsigned(reg_SP)-1);
 					cpu_addr <= reg_SP;
-					WR <= false;
+					RDS <= false;
 					next_state := read_first_byte;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 					
 				-- Eight-bit indirect write operations with index register. We drive the index
 				-- register onto the address lines on the next rising edge of the clock and
-				-- assert WR. We drive the value of A onto the data lines. On the falling
+				-- assert WDS. We drive the value of A onto the data lines. On the falling
 				-- edge of the clock in the middle of the next clock cycle, the target location
 				-- will be written. By that time, we will be processing the next instruction.
 				-- Clock Cycles = 1.
 				when ld_ix_A =>
 					cpu_data_out <= std_logic_vector(reg_A);
 					cpu_addr <= reg_IX;
-					WR <= true;
+					WDS <= true;
 					next_state := read_opcode;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 				when ld_iy_A =>
 					cpu_data_out <= std_logic_vector(reg_A);
 					cpu_addr <= reg_IY;
-					WR <= true;
+					WDS <= true;
 					next_state := read_opcode;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 					
 				-- Eight-bit indirect read operations with index register. We drive the index
 				-- register onto the address lines on the next rising edge of the clock and
-				-- unassert WR. On the falling edge in the middle of the next clock cycle, 
+				-- unassert WDS. On the falling edge in the middle of the next clock cycle, 
 				-- the target location's value will be driven onto the data bus. We read that 
 				-- value in a subsequent state, read_first_byte. Clock Cycles = 2.
 				when ld_A_ix =>
 					cpu_addr <= reg_IX;
-					WR <= false;
+					RDS <= false;
 					next_state := read_first_byte;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 				when ld_A_iy =>
 					cpu_addr <= reg_IY;
-					WR <= false;
+					RDS <= false;
 					next_state := read_first_byte;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 					
@@ -809,19 +837,19 @@ begin
 				-- operand, being the one we loaded from a lower address, is the HI byte
 				-- of the address, and the second operand is the LO byte. We drive the 
 				-- address onto the address lines on the next rising edge, along with 
-				-- not WR. We read the value of the target location in the next
+				-- not WDS. We read the value of the target location in the next
 				-- clock cycle, in the read_first_byte state. Clock Cycles = 4.
 				when ld_A_m =>
 					cpu_addr(ca_top downto 8) <= 
 						std_logic_vector(first_operand(ca_top-8 downto 0));
 					cpu_addr(7 downto 0) <= 
 						std_logic_vector(second_operand);
-					WR <= false;
+					RDS <= false;
 					next_state := read_first_byte;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 					
 				-- Indirect eight-bit write operations using operands as address. Same as
-				-- the read cycle, except we assert WR on the next rising edge, and drive
+				-- the read cycle, except we assert WDS on the next rising edge, and drive
 				-- the data lines with the value of A, and then leave the targe location
 				-- to be written in the middle of the next cycle, while we get on with
 				-- decoding the next instruction. Clock Cycles = 3.
@@ -830,7 +858,7 @@ begin
 						std_logic_vector(first_operand(ca_top-8 downto 0));
 					cpu_addr(7 downto 0) <= std_logic_vector(second_operand);
 					cpu_data_out <= std_logic_vector(reg_A);
-					WR <= true;
+					WDS <= true;
 					next_state := read_opcode;
 					next_pc := std_logic_vector(unsigned(prog_cntr)+1);
 					
@@ -863,7 +891,7 @@ begin
 				when call_nn =>
 					next_SP := std_logic_vector(unsigned(reg_SP)+1);
 					cpu_addr <= std_logic_vector(unsigned(reg_SP)+1);
-					WR <= true;
+					WDS <= true;
 					cpu_data_out <= (others => '0');
 					cpu_data_out(pa_top-8 downto 0) <= prog_cntr(pa_top downto 8);
 					next_state := write_second_byte;
@@ -936,7 +964,7 @@ begin
 				when pop_IX | pop_IY =>
 					next_SP := std_logic_vector(unsigned(reg_SP)-1);
 					cpu_addr <= reg_SP;
-					WR <= false;
+					RDS <= false;
 					case opcode_saved is
 						when pop_IX => next_IX(7 downto 0) := cpu_data_in(7 downto 0);
 						when pop_IY => next_IY(7 downto 0) := cpu_data_in(7 downto 0);
@@ -950,7 +978,7 @@ begin
 				when ret_cll | ret_int =>
 					next_SP := std_logic_vector(unsigned(reg_SP)-1);
 					cpu_addr <= reg_SP;
-					WR <= false;
+					RDS <= false;
 					next_pc := (others => '0');
 					next_pc(7 downto 0) := cpu_data_in;
 					next_state := read_second_byte;	
@@ -1014,7 +1042,7 @@ begin
 				when push_IX | push_IY =>
 					next_SP := std_logic_vector(unsigned(reg_SP)+1);
 					cpu_addr <= std_logic_vector(unsigned(reg_SP)+1);
-					WR <= true;
+					WDS <= true;
 					case opcode_saved is
 						when push_IX => cpu_data_out(7 downto 0) <= reg_IX(7 downto 0);
 						when push_IY => cpu_data_out(7 downto 0) <= reg_IY(7 downto 0);
@@ -1030,7 +1058,7 @@ begin
 				when call_nn | sw_int =>
 					next_SP := std_logic_vector(unsigned(reg_SP)+1);
 					cpu_addr <= std_logic_vector(unsigned(reg_SP)+1);
-					WR <= true;
+					WDS <= true;
 					cpu_data_out <= prog_cntr(7 downto 0);
 					if (opcode_saved = call_nn) then
 						next_pc(pa_top downto 8) := 

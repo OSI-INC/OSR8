@@ -20,7 +20,7 @@
 -- instruction memory can be anything from 1 kByte to 64 kByte.
 
 -- In the OSR8V4, the instruction memory read cycles must be clocked on the 
--- falling edge of CK. The Embedded Ram Blocks (ERBs) provided by the LCMXO2
+-- falling edge of CK. The Embedded Block RAM (EBR) provided by the LCMXO2
 -- series of logic chips upon which the OSR8 has been developed are synchronous,
 -- so they must be read out on one edge of the clock or the other, and the OSR8V4
 -- is designed to read on the falling edge. The instruction memory write cycles, 
@@ -95,7 +95,7 @@
 
 -- V4.2, [18-FEB-26] Start new version. Introduce a signals opcode_saved and
 -- state for the CPU. Separate the ALU input multiplexer into its own process.
--- find and fix bugs in the MUX from use of different copies of opcode. Add
+-- Find and fix bugs in the MUX from use of different copies of opcode. Add
 -- Interrupt Service (ISRV) flag that indicates the CPU is servicing an
 -- interrupt. 
 
