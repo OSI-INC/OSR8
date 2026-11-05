@@ -16,28 +16,31 @@
 -- along with this program; if not, write to the Free Software
 -- Foundation, Inc., 59 Temple Place - Suite 330, Boston, MA 02111-1307, USA.
 
--- The OSR8V4 requires separate instruction and process memory. Process and 
--- instruction memory can be anything from 1 kByte to 64 kByte.
+-- The OSR8 requires separate instruction and process memory. Process and 
+-- instruction memory can be anything from 512 Byte to 64 kByte.
 
--- In the OSR8V4, the instruction memory read cycles must be clocked on the 
--- falling edge of CK. The Embedded Block RAM (EBR) provided by the LCMXO2
--- series of logic chips upon which the OSR8 has been developed are synchronous,
--- so they must be read out on one edge of the clock or the other, and the OSR8V4
--- is designed to read on the falling edge. The instruction memory write cycles, 
--- if supported by peripherals, are how the user can upload code into the embedded 
--- controller. The CPU must write to a dual-port instruction memory on the rising 
--- edge of CK, on account of this same memory being read by the CPU on the falling 
--- edge. Dual-port memory does not function correctly unless the write and read 
--- clocks are offset.
+-- The instruction memory reads must be clocked on the falling edge of CK. 
+-- The Embedded Block RAM (EBR) provided by LCMXO2 family logic chips are 
+-- synchronous for both writing and reading. They must be read out on one 
+-- edge of the clock or the other. The OSR8 is designed to read the 
+-- instruction memory on the falling edge. Writes to instruction memory, 
+-- if supported by the memory management unit (MMU), must take place on 
+-- the rising edge of CK so that writes and reads do not take place at the
+-- same time, which causes problems in EBR dual-port RAM implementations.
 
--- The process memory must also be clocked on the falling edge of CK, for the same
--- reasons the instruction memory must be clocked on the falling edge. The CPU 
--- increments the program counter on the rising edge of CK. When it asserts WR 
--- and DS, it does so for one CK cycle, starting and ending on the rising edges. 
--- These signals are always valid before and after the falling edge of CK. On a 
--- read cycle, the CPU expects data to be ready before the next rising edge of 
--- CK after it asserts DS. On a write cycle, the CPU expects the write to take 
--- place on the falling edge of CK after it asserts DS and WR. 
+-- The process memory reads must be clocked on the falling edge of CK. The 
+-- CPU increments the program counter on the rising edge of CK. When it 
+-- asserts WR and DS, it does so well before the falling edge of CK and 
+-- keeps them asserted until just after the next rising edge of CK. On a 
+-- read cycle, the CPU expects data to be ready before the next rising edge 
+-- of CK, so the read must take place on the falling edge of CK. On write
+-- cycles, the outgoing data is ready well before the falling edge of CK 
+-- and remains ready until just after the next rising edge, so writes can
+-- take place on either the falling or rising edge of CK. In our OSR8
+-- deployments, most process memory writes take place on the falling edge
+-- of CK, but in designs where the MMU maps a block of instruction memory
+-- into process memory, writes by the OSR8 to the instruction memory will
+-- take place on the rising edge of CK.
 
 -- The IRQ signal is the interrupt request line from external logic. The memory 
 -- management unit (MMU) must provide a way for the CPU to clear the IRQ signal 
@@ -111,37 +114,39 @@
 
 -- V4.4, [09-JUN-26] Remove SIG assignments in an effort to reduce code size.
 
+-- [05-NOV-26] Improve comments, deploy natural and positive types in place
+-- of integer in places.
+
 library ieee;  
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 entity OSR8_CPU is 
 	generic (
-		prog_cntr_len : integer := 12;
-		cpu_addr_len : integer := 11;
-		start_pc : integer := 0;
-		interrupt_pc : integer := 3
-	);
+		prog_cntr_len : positive := 12; -- Can be 9 to 16 for 512 Byte to 64 KByte
+		cpu_addr_len : positive := 10; -- Can be 9 to 16 for 512 Byte to 64 KByte
+		start_pc : natural := 0; -- A location in instruction memory
+		interrupt_pc : natural := 3 -- A location in instruction memory	);
 	port (
-		prog_data : in std_logic_vector(7 downto 0); -- Program Data
-		prog_cntr : inout std_logic_vector(prog_cntr_len-1 downto 0); -- Program Address
-		cpu_data_out : out std_logic_vector(7 downto 0); -- Outgoing CPU Data Bus
-		cpu_data_in : in std_logic_vector(7 downto 0); -- Incoming CPU Data Bus
-		cpu_addr : out std_logic_vector(cpu_addr_len-1 downto 0); -- Outgoing CPU Address Bus
-		WR : out boolean; -- Write Cycle
+		prog_data : in std_logic_vector(7 downto 0); -- Instruction Data
+		prog_cntr : inout std_logic_vector(prog_cntr_len-1 downto 0); -- Instrution Address
+		cpu_data_out : out std_logic_vector(7 downto 0); -- Outgoing Process Data
+		cpu_data_in : in std_logic_vector(7 downto 0); -- Incoming Process Data
+		cpu_addr : out std_logic_vector(cpu_addr_len-1 downto 0); -- Process Address
+		WR : out boolean; -- Write Enable
 		DS : out boolean; -- Data Strobe
 		IRQ : in boolean; -- Interrupt Request
 		ISRV : out boolean; -- Interrupt Service
 		SIG : out std_logic_vector(3 downto 0); -- Signals for Debugging
-		RESET : in std_logic; -- Hard Reset
-		CK : in std_logic); -- The clock, duty cycle 50%.
+		RESET : in std_logic; -- Reset
+		CK : in std_logic); -- Clock
 end;
 
 architecture behavior of OSR8_CPU is 
 
 -- Program location constants in bytes.
-	constant pa_top : integer := prog_cntr_len-1;
-	constant ca_top : integer := cpu_addr_len-1;
+	constant pa_top : natural := prog_cntr_len-1;
+	constant ca_top : natural := cpu_addr_len-1;
 
 -- Definition of operation codes. We have the constant name we will be using
 -- in the VHDL definition of the CPU to refer to an operation, followed by 
@@ -320,7 +325,7 @@ constant srl_A    : opcode_type := "1111110"; -- 7E srl A
 	signal opcode_saved : opcode_type;
 	
 -- The state of the CPU.
-	signal state : integer range 0 to 15;
+	signal state : natural range 0 to 15;
 	
 -- This signal is the one the CPU sets on the rising edge of CK to
 -- indicated that it is executing an interrupt routine. We will delay
@@ -330,14 +335,14 @@ constant srl_A    : opcode_type := "1111110"; -- 7E srl A
 -- The state values. We use single-bit values to simplify the state
 -- machine logic. We get faster and more compact logic even though we
 -- use eight bits for the state rather than three.
-	constant read_opcode : integer := 1;
-	constant read_first_operand : integer := 2;
-	constant read_second_operand : integer := 3;
-	constant read_first_byte : integer := 4;
-	constant read_second_byte : integer := 5;
-	constant write_second_byte : integer := 6;
-	constant read_second_opcode : integer := 7;
-	constant incr_pc : integer := 8;
+	constant read_opcode : natural := 1;
+	constant read_first_operand : natural := 2;
+	constant read_second_operand : natural := 3;
+	constant read_first_byte : natural := 4;
+	constant read_second_byte : natural := 5;
+	constant write_second_byte : natural := 6;
+	constant read_second_opcode : natural := 7;
+	constant incr_pc : natural := 8;
 		
 -- Functions and Procedures	
 	function to_std_logic (v: boolean) return std_ulogic is
@@ -357,7 +362,7 @@ begin
 		-- Add X and Y with Carry
 		when alu_cmd_add =>
 			if alu_cin then 
-				result := ('0' & alu_in_x) + ('0' & alu_in_y) + "000000001";
+				result := ('0' & alu_in_x) + ('0' & alu_in_y) + 1;
 			else 
 				result := ('0' & alu_in_x) + ('0' & alu_in_y); 
 			end if;
@@ -365,7 +370,7 @@ begin
 		-- Subtract Y from X with Borrow
 		when alu_cmd_sub =>
 			if alu_cin then 
-				result := ('0' & alu_in_x) - ('0' & alu_in_y) - "000000001";
+				result := ('0' & alu_in_x) - ('0' & alu_in_y) - 1;
 			else 
 				result := ('0' & alu_in_x) - ('0' & alu_in_y); 
 			end if;
@@ -455,7 +460,7 @@ begin
 		-- names.
 		variable opcode : opcode_type;
 		variable first_operand, second_operand : cpu_reg_type;
-		variable next_state : integer range 0 to 15;
+		variable next_state : natural range 0 to 15;
 		
 		-- We have next_pc to set up the next program counter value.
 		variable next_pc : cpu_pc_type;
