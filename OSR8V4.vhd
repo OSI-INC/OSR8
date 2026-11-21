@@ -102,15 +102,10 @@
 -- Interrupt Service (ISRV) flag that indicates the CPU is servicing an
 -- interrupt. 
 
--- [19-FEB-26] Remove integer types from ALU, CPU, and MUX. Use unsigned and
+-- V4.3, [21-FEB-26] Remove integer types from ALU, CPU, and MUX. Use unsigned and
 -- logic vectors for opcodes and registers. Simplify the expressions for the
 -- ALU operations and use unsigned math explicitly to obtain modular behavior.
 -- These changes save 30 LUTs. The P3041 code is now 1201 LUTs.
-
--- V4.3, [21-FEB-26] Plan to add a non-maskable interrupt. A "Kernel Request" 
--- (KRQ) will cooperate with a "Kernel Service" (KSRV) signal to support a
--- kernel process that carries on regardless of any code uploaded to the
--- device via commands.
 
 -- V4.4, [09-JUN-26] Remove SIG assignments in an effort to reduce code size.
 
@@ -126,7 +121,8 @@ entity OSR8_CPU is
 		prog_cntr_len : positive := 12; -- Can be 9 to 16 for 512 Byte to 64 KByte
 		cpu_addr_len : positive := 10; -- Can be 9 to 16 for 512 Byte to 64 KByte
 		start_pc : natural := 0; -- A location in instruction memory
-		interrupt_pc : natural := 3 -- A location in instruction memory	);
+		interrupt_pc : natural := 3 -- A location in instruction memory
+	);
 	port (
 		prog_data : in std_logic_vector(7 downto 0); -- Instruction Data
 		prog_cntr : inout std_logic_vector(prog_cntr_len-1 downto 0); -- Instrution Address
@@ -139,7 +135,8 @@ entity OSR8_CPU is
 		ISRV : out boolean; -- Interrupt Service
 		SIG : out std_logic_vector(3 downto 0); -- Signals for Debugging
 		RESET : in std_logic; -- Reset
-		CK : in std_logic); -- Clock
+		CK : in std_logic -- Clock
+	);
 end;
 
 architecture behavior of OSR8_CPU is 
